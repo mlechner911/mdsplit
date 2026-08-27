@@ -3,6 +3,54 @@
 All notable changes to this project are documented here. Versions follow
 [semantic versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Added
+
+- **Reading by topic.** `outline` lists every heading with the size of the
+  section it opens, subsections included, and returns no text at all;
+  `read_section` returns one section verbatim, cut from a heading to the next
+  of the same or a shallower level. Both need no job — nothing is written, no
+  manifest, no `jobId`. On this repo's README the outline costs ~700 characters
+  against 22841 for the document, and the section a question is about is 1301.
+- **Short fragments travel together.** Fragments under 60 characters go out as
+  one numbered request and come back the same way. A table cell reading "never
+  transmitted" is three imperative words; alone under a prompt full of rules a
+  small model cannot tell it from one of those rules. On the "Two modes" table
+  this went from 13 of 23 cells usable in 23 requests to 20 of 20 in 4.
+- **`-llm-user-template`** for models that prescribe a request format, with
+  shorthands for `gemma3-translator` and `translategemma`. When set, no system
+  message is sent, so a model's own baked-in prompt stays in force.
+- **`MODELS.md`** — a log of what works and, more usefully, how models fail:
+  prompt echo, invented markers, modified code fences, a chat template that
+  refuses every request shape, and two specialised models that translate in
+  the opposite direction.
+
+### Fixed
+
+- A reply that echoes our own instructions instead of translating, or that
+  runs several times longer than its fragment, is rejected rather than stored.
+  Both slipped past structure verification, because a table with the right
+  number of rows and pipes is structurally intact whatever its cells say.
+- A marker the model invented no longer reaches the document. `restore` now
+  verifies the markers it finds rather than the ones it expects, so a fragment
+  with no protected spans — nothing to substitute, nothing checked — is covered
+  too. A literal sentinel in the source is protected, since this README writes
+  about `⟦n⟧` in its own text.
+- The glossary count reported per-fragment hits summed over a chunk, so a chunk
+  could claim more terms than the glossary holds. It counts distinct terms now.
+
+### Changed
+
+- The fixture moved to `testdata/sample.md`. Go ignores that directory by name,
+  which is what it is for.
+- `AGENTS.md` describes the current tool. Two of its instructions had become
+  actively wrong — "all user-facing strings are German" and "do not run
+  `go mod tidy`" — and an agent following them would have undone finished work.
+- The README says what to put in a consuming project's agent instructions. A
+  model reads a tool's description only after deciding to call that tool, so
+  the ordering rules arrive too late to prevent the wrong turn.
+
 ## [1.4.0] - 2026-08-27
 
 The splitter learned to run the translation itself, one isolated request per
