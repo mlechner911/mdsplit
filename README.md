@@ -59,7 +59,7 @@ model, but nothing in it is specific to either.
   are trimmed and whitespace-only lines become empty. Indentation and hard
   line breaks (two trailing spaces) survive.
 - **CLI mode**: writes `<name>-part-NN.md` files plus an `index.json` manifest (source file, part count, ordered chunk list) next to the source file
-- **Merge mode** ("Rückweg"): `-merge -dir chunks/` reassembles the chunks via the manifest and reports whether the result is byte-identical, whitespace-identical, or diverging
+- **Merge mode**: `-merge -dir chunks/` reassembles the chunks via the manifest and reports whether the result is byte-identical, whitespace-identical, or diverging
 - **MCP job workflow**: `split_markdown` returns a manifest, not the document.
   Content moves one part at a time via `get_chunk` / `put_chunk`, so context
   stays constant no matter how large the source is — which is the whole point
@@ -181,50 +181,6 @@ The repo ships a project-local `.mcp.json` that does exactly this for you, so a 
 
 A global `crushrc` entry works the same way: `mcp add md-splitter --command mcp-md-splitter`.
 
-## Project Structure
-
-Standard Go `cmd`/`internal` layout:
-
-```
-.
-├── .mcp.json                     # MCP client registration (md-splitter)
-├── cmd/mcp-md-splitter/          # entrypoint
-│   ├── main.go                   # flag parsing (cli / merge / mcp)
-│   ├── cli.go                    # CLI export mode
-│   ├── merge.go                  # Merge mode (Rückweg, -merge -dir …)
-│   └── mcp.go                    # MCP stdio server (5 tools)
-├── internal/job/                 # Manifest, chunk files, jobId registry
-├── internal/split/               # splitter library (pure string functions)
-│   ├── block.go                  # Block{Text,Gap,Kind,Level} + render helpers
-│   ├── html.go                   # HTML block detection helpers
-│   ├── extract.go                # ExtractBlocks (atomic-block parser)
-│   ├── pack.go                   # groupBlocks, packRanges, SplitDoc, SplitFile
-│   ├── join.go                   # Canonical, Normalize, JoinGaps, MergeFilesGaps
-│   └── *_test.go                 # unit tests + byte-exact round-trip corpus
-├── Taskfile.yaml                 # task build/test/vet/check/roundtrip/install/clean
-├── VERSION                       # 1.3.0
-└── test.md                       # fixture for the full-split test
-```
-
-Pipeline: `ExtractBlocks(content) []Block` parses Markdown into atomic blocks —
-each carrying its exact text, the blank-line `Gap` that followed it, and its
-`Kind`. `groupBlocks` then bonds what must not be separated (blocks with no
-blank line between them; a heading and its section). `packRanges` fills chunks
-from those groups, preferring a cut before a heading. `SplitDoc(content, max)`
-returns `Doc{Chunks, Gaps}`; `JoinGaps(chunks, gaps)` is the exact inverse.
-
-## Development Notes
-
-- **Everything a user or a model reads is English**: CLI output, error
-  messages, flag help and the MCP tool descriptions. Code comments and test
-  failure messages are German — that split is deliberate, so keep it.
-- No Markdown AST library. The parser is line-based on purpose: an AST would
-  have to be lowered back to source to cut on, and preserving the source bytes
-  exactly is the one thing the round-trip contract depends on.
-- `TestRoundtrip_ProjectDocs` runs the splitter over every `*.md` in the repo
-  root at three budgets and asserts byte-exactness — the cheapest real corpus
-  available without leaving the repo.
-
 ## Translation
 
 With an endpoint configured, the splitter can run the translation itself, one
@@ -301,6 +257,53 @@ purpose: it is prose a reader sees, while the path is not.
 
 A part that fails any of these is **not stored** and stays open, so rerunning
 retries exactly those. The original chunk is never overwritten.
+
+## Project Structure
+
+Standard Go `cmd`/`internal` layout:
+
+```
+.
+├── .mcp.json                     # MCP client registration (md-splitter)
+├── cmd/mcp-md-splitter/          # entrypoint
+│   ├── main.go                   # flag parsing (cli / merge / mcp)
+│   ├── cli.go                    # CLI export mode
+│   ├── merge.go                  # Merge mode (-merge -dir …)
+│   ├── mcp.go                    # MCP stdio server (6 tools)
+│   └── translate.go              # -translate CLI mode
+├── internal/job/                 # manifest, chunk files, jobId registry
+├── internal/llm/                 # OpenAI-compatible chat client
+├── internal/translate/           # block/chunk modes, placeholder protection
+├── internal/split/               # splitter library (pure string functions)
+│   ├── block.go                  # Block{Text,Gap,Kind,Level} + render helpers
+│   ├── html.go                   # HTML block detection helpers
+│   ├── extract.go                # ExtractBlocks (atomic-block parser)
+│   ├── pack.go                   # groupBlocks, packRanges, SplitDoc, SplitFile
+│   ├── join.go                   # Canonical, Normalize, JoinGaps, MergeFilesGaps
+│   └── *_test.go                 # unit tests + byte-exact round-trip corpus
+├── Taskfile.yaml                 # task build/test/vet/check/roundtrip/install/clean
+├── VERSION                       # 1.3.0
+└── test.md                       # fixture for the full-split test
+```
+
+Pipeline: `ExtractBlocks(content) []Block` parses Markdown into atomic blocks —
+each carrying its exact text, the blank-line `Gap` that followed it, and its
+`Kind`. `groupBlocks` then bonds what must not be separated (blocks with no
+blank line between them; a heading and its section). `packRanges` fills chunks
+from those groups, preferring a cut before a heading. `SplitDoc(content, max)`
+returns `Doc{Chunks, Gaps}`; `JoinGaps(chunks, gaps)` is the exact inverse.
+
+## Development Notes
+
+- **Everything a user or a model reads is English**: CLI output, error
+  messages, flag help and the MCP tool descriptions. Code comments and test
+  failure messages are German — that split is deliberate, so keep it.
+- No Markdown AST library. The parser is line-based on purpose: an AST would
+  have to be lowered back to source to cut on, and preserving the source bytes
+  exactly is the one thing the round-trip contract depends on.
+- `TestRoundtrip_ProjectDocs` runs the splitter over every `*.md` in the repo
+  root at three budgets and asserts byte-exactness — the cheapest real corpus
+  available without leaving the repo.
 
 ## Continuous integration
 
