@@ -37,18 +37,17 @@ tasks:
       - ls -la chunks/
 
   roundtrip:
-    desc: "Split test.md, merge zurück, prüfen ob identisch (normalisiert)"
+    desc: Split test.md, merge it back and verify the round-trip is byte-exact
     deps: [build]
     cmds:
       - rm -rf chunks test.md.merged
       - ./bin/{{.BINARY}} -cli -file test.md -size 4000
-      - ./bin/{{.BINARY}} -merge -dir chunks/
+      - './bin/{{.BINARY}} -merge -dir chunks/ | tee /dev/stderr | grep -q "round-trip: byte-identical to the source"'
 
   install:
-    desc: Lokal installieren nach $GOBIN (~/go/bin) – danach global `mcp-md-splitter` verfügbar
+    desc: Install into $GOBIN (~/go/bin) so `mcp-md-splitter` is on PATH for MCP clients
     cmds:
       - go install -ldflags "-X main.version={{.VERSION_FILE}}" {{.PKG}}
-      - cp ./bin/{{.BINARY}} ~/.local/bin
 
   clean:
     desc: Remove build artifacts

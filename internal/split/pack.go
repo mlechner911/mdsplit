@@ -134,7 +134,7 @@ func SplitBlocks(blocks []Block, maxSize int) Doc {
 
 	for i, c := range doc.Chunks {
 		if len(c) > maxSize {
-			fmt.Fprintf(os.Stderr, "ℹ️  Chunk %d: %d Zeichen (Budget %d) - unteilbarer Block\n", i+1, len(c), maxSize)
+			fmt.Fprintf(os.Stderr, "note: chunk %d is %d chars (budget %d) - held together by an indivisible block\n", i+1, len(c), maxSize)
 		}
 	}
 	return doc
@@ -163,7 +163,7 @@ func SplitFile(path string, maxSize int) ([]string, error) {
 func SplitFileDoc(path string, maxSize int) (Doc, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
-		return Doc{}, fmt.Errorf("datei lesen: %w", err)
+		return Doc{}, fmt.Errorf("read file: %w", err)
 	}
 	return SplitDoc(string(data), maxSize), nil
 }

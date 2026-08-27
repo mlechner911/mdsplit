@@ -97,23 +97,23 @@ func (m *Manifest) SetDir(dir string) { m.dir = dir }
 // Write legt Chunks und Manifest im Ordner ab und registriert die ID.
 func (m *Manifest) Write(dir string, chunks []string) error {
 	if len(chunks) != len(m.Parts) {
-		return fmt.Errorf("manifest hat %d teile, %d chunks übergeben", len(m.Parts), len(chunks))
+		return fmt.Errorf("manifest has %d parts but %d chunks were passed", len(m.Parts), len(chunks))
 	}
 	if err := os.MkdirAll(dir, 0o755); err != nil {
-		return fmt.Errorf("ordner anlegen: %w", err)
+		return fmt.Errorf("create directory: %w", err)
 	}
 	m.dir = dir
 	for i, p := range m.Parts {
 		if err := os.WriteFile(filepath.Join(dir, p.File), []byte(chunks[i]), 0o644); err != nil {
-			return fmt.Errorf("chunk schreiben: %w", err)
+			return fmt.Errorf("write chunk: %w", err)
 		}
 	}
 	data, err := json.MarshalIndent(m, "", "  ")
 	if err != nil {
-		return fmt.Errorf("manifest serialisieren: %w", err)
+		return fmt.Errorf("encode manifest: %w", err)
 	}
 	if err := os.WriteFile(filepath.Join(dir, IndexName), data, 0o644); err != nil {
-		return fmt.Errorf("manifest schreiben: %w", err)
+		return fmt.Errorf("write manifest: %w", err)
 	}
 	return registerID(m.ID, dir)
 }
@@ -122,11 +122,11 @@ func (m *Manifest) Write(dir string, chunks []string) error {
 func Load(dir string) (*Manifest, error) {
 	data, err := os.ReadFile(filepath.Join(dir, IndexName))
 	if err != nil {
-		return nil, fmt.Errorf("manifest lesen: %w", err)
+		return nil, fmt.Errorf("read manifest: %w", err)
 	}
 	var m Manifest
 	if err := json.Unmarshal(data, &m); err != nil {
-		return nil, fmt.Errorf("manifest parsen: %w", err)
+		return nil, fmt.Errorf("parse manifest: %w", err)
 	}
 	m.dir = dir
 	// Ältere Manifeste kennen nur chunks[]; Parts daraus nachziehen.
@@ -151,7 +151,7 @@ func LoadByID(id string) (*Manifest, error) {
 // part liefert den Eintrag zu einer 1-basierten Teilnummer.
 func (m *Manifest) part(n int) (Part, error) {
 	if n < 1 || n > len(m.Parts) {
-		return Part{}, fmt.Errorf("teil %d liegt außerhalb von 1..%d", n, len(m.Parts))
+		return Part{}, fmt.Errorf("part %d is out of range 1..%d", n, len(m.Parts))
 	}
 	return m.Parts[n-1], nil
 }
@@ -193,7 +193,7 @@ func (m *Manifest) ReadChunk(n int) (string, bool, error) {
 	}
 	data, err := os.ReadFile(sp)
 	if err != nil {
-		return "", false, fmt.Errorf("chunk lesen: %w", err)
+		return "", false, fmt.Errorf("read chunk: %w", err)
 	}
 	return string(data), false, nil
 }
@@ -240,7 +240,7 @@ func (m *Manifest) MergePaths() (paths []string, translated int, err error) {
 			return nil, 0, serr
 		}
 		if _, statErr := os.Stat(sp); statErr != nil {
-			return nil, 0, fmt.Errorf("chunk fehlt: %s", sp)
+			return nil, 0, fmt.Errorf("chunk file is missing: %s", sp)
 		}
 		paths = append(paths, sp)
 	}
@@ -255,7 +255,7 @@ func (m *Manifest) MergePaths() (paths []string, translated int, err error) {
 func pointerDir() (string, error) {
 	base, err := os.UserCacheDir()
 	if err != nil {
-		return "", fmt.Errorf("cache-verzeichnis: %w", err)
+		return "", fmt.Errorf("locate cache directory: %w", err)
 	}
 	return filepath.Join(base, "mcp-md-splitter", "jobs"), nil
 }
@@ -279,17 +279,17 @@ func registerID(id, dir string) error {
 func lookupID(id string) (string, error) {
 	pd, err := pointerDir()
 	if err != nil {
-		return "", fmt.Errorf("job %s nicht auffindbar: %w", id, err)
+		return "", fmt.Errorf("cannot locate job %s: %w", id, err)
 	}
 	data, err := os.ReadFile(filepath.Join(pd, id+".json"))
 	if err != nil {
-		return "", fmt.Errorf("unbekannte jobId %q - bitte split_markdown erneut aufrufen", id)
+		return "", fmt.Errorf("unknown jobId %q - run split_markdown again to create one", id)
 	}
 	var p struct {
 		Dir string `json:"dir"`
 	}
 	if err := json.Unmarshal(data, &p); err != nil || p.Dir == "" {
-		return "", fmt.Errorf("job-zeiger %q unlesbar", id)
+		return "", fmt.Errorf("job pointer %q is unreadable", id)
 	}
 	return p.Dir, nil
 }

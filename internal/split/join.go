@@ -92,7 +92,7 @@ func MergeFilesGaps(paths []string, gaps []int) (string, error) {
 	for _, p := range paths {
 		data, err := os.ReadFile(p)
 		if err != nil {
-			return "", fmt.Errorf("chunk lesen %s: %w", p, err)
+			return "", fmt.Errorf("read chunk %s: %w", p, err)
 		}
 		chunks = append(chunks, string(data))
 	}

@@ -14,29 +14,29 @@ import (
 // falls vorhanden, sonst das Original.
 func runMergeMode(dir string, out string) {
 	if dir == "" {
-		fmt.Println("❌ Fehler: Bitte den Chunks-Ordner via -dir angeben (z. B. chunks/).")
+		fmt.Println("error: pass the chunk directory with -dir (e.g. chunks/)")
 		os.Exit(1)
 	}
 	abs, err := filepath.Abs(dir)
 	if err != nil || !dirExists(abs) {
-		fmt.Printf("❌ Ordner nicht gefunden: %s\n", dir)
+		fmt.Printf("error: directory not found: %s\n", dir)
 		os.Exit(1)
 	}
 
 	m, err := job.Load(abs)
 	if err != nil {
-		fmt.Printf("❌ %v\n", err)
+		fmt.Printf("error: %v\n", err)
 		os.Exit(1)
 	}
 	paths, translated, err := m.MergePaths()
 	if err != nil {
-		fmt.Printf("❌ %v\n", err)
+		fmt.Printf("error: %v\n", err)
 		os.Exit(1)
 	}
 
 	merged, err := split.MergeFilesGaps(paths, m.Gaps)
 	if err != nil {
-		fmt.Printf("❌ Fehler beim Zusammenfügen: %v\n", err)
+		fmt.Printf("error: merge failed: %v\n", err)
 		os.Exit(1)
 	}
 
@@ -44,13 +44,13 @@ func runMergeMode(dir string, out string) {
 		out = defaultMergeTarget(m)
 	}
 	if err := os.WriteFile(out, []byte(merged), 0o644); err != nil {
-		fmt.Printf("❌ Fehler beim Schreiben von %s: %v\n", out, err)
+		fmt.Printf("error: cannot write %s: %v\n", out, err)
 		os.Exit(1)
 	}
 
-	fmt.Printf("🔗 %d Teile zusammengefügt → %s (%d Zeichen)\n", len(paths), out, len(merged))
+	fmt.Printf("merged %d parts into %s (%d chars)\n", len(paths), out, len(merged))
 	if translated > 0 {
-		fmt.Printf("   davon bearbeitet: %d/%d\n", translated, m.TotalParts)
+		fmt.Printf("  edited parts used: %d/%d\n", translated, m.TotalParts)
 		return
 	}
 	if data, err := os.ReadFile(m.SourceFile); err == nil {
@@ -64,11 +64,11 @@ func runMergeMode(dir string, out string) {
 func roundtripVerdict(merged, orig string) string {
 	switch {
 	case split.Canonical(merged) == split.Canonical(orig):
-		return "✅ Roundtrip-Check: byte-genau identisch zum Original"
+		return "round-trip: byte-identical to the source"
 	case split.Normalize(merged) == split.Normalize(orig):
-		return "✅ Roundtrip-Check: inhaltlich identisch (nur Whitespace weicht ab)"
+		return "round-trip: identical apart from whitespace"
 	default:
-		return "⚠️  Roundtrip-Check: weicht vom Original ab - bitte prüfen"
+		return "round-trip: DIFFERS from the source - please check"
 	}
 }
 

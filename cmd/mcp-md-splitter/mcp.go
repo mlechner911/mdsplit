@@ -44,11 +44,11 @@ func resolveJob(req mcp.CallToolRequest) (*job.Manifest, error) {
 	if dir := argString(req, "chunksDir"); dir != "" {
 		abs, err := filepath.Abs(dir)
 		if err != nil {
-			return nil, fmt.Errorf("ordner auflösen: %w", err)
+			return nil, fmt.Errorf("resolve directory: %w", err)
 		}
 		return job.Load(abs)
 	}
-	return nil, fmt.Errorf("bitte jobId (aus split_markdown) oder chunksDir angeben")
+	return nil, fmt.Errorf("pass either jobId (from split_markdown) or chunksDir")
 }
 
 // runMCPMode startet den stdio-MCP-Server.
@@ -64,9 +64,9 @@ func runMCPMode() {
 	s.AddTool(jobStatusTool(), jobStatusHandler)
 	s.AddTool(mergeTool(), mergeHandler)
 
-	fmt.Fprintln(os.Stderr, "🚀 MCP-Server gestartet (Markdown-Splitter "+version+")")
+	fmt.Fprintln(os.Stderr, "markdown-splitter MCP server ready ("+version+")")
 	if err := server.ServeStdio(s); err != nil {
-		fmt.Fprintf(os.Stderr, "❌ Server-Fehler: %v\n", err)
+		fmt.Fprintf(os.Stderr, "server error: %v\n", err)
 		os.Exit(1)
 	}
 }
@@ -76,43 +76,43 @@ func runMCPMode() {
 func splitTool() mcp.Tool {
 	return mcp.NewTool("split_markdown",
 		mcp.WithDescription(
-			"Teilt eine Markdown-Datei in abschnittsweise Chunks und legt sie als Dateien ab. "+
-				"Gibt NUR das Manifest zurück (jobId, Teile mit Überschrift und Länge), nicht den Inhalt - "+
-				"so bleibt der Kontextbedarf konstant, egal wie groß die Datei ist. "+
-				"Danach je Teil get_chunk → übersetzen/bearbeiten → put_chunk, am Ende merge_chunks. "+
-				"Code-Zäune, Tabellen, Listen und HTML-Blöcke bleiben immer vollständig; "+
-				"Chunks beginnen bevorzugt an einer Überschrift."),
+			"Split a Markdown file into section-aligned chunks and write them to disk. "+
+				"Returns ONLY the manifest (jobId, plus each part's heading and length), never the "+
+				"document text, so the context cost stays flat however large the file is. "+
+				"Then work part by part: get_chunk -> translate or edit -> put_chunk, and "+
+				"merge_chunks at the end. Code fences, tables, lists and HTML blocks are never "+
+				"split, and chunks start at a heading wherever possible."),
 		mcp.WithString("filePath", mcp.Required(),
-			mcp.Description("Pfad zur Markdown-Datei")),
+			mcp.Description("path to the Markdown file")),
 		mcp.WithNumber("size",
-			mcp.Description("Weiches Zeichenbudget pro Chunk (Standard: 8000). Unteilbare Blöcke dürfen es überschreiten.")),
+			mcp.Description("soft character budget per chunk (default: 8000); indivisible blocks may exceed it")),
 		mcp.WithString("target",
-			mcp.Description("Kürzel für die bearbeitete Fassung, z. B. \"de\". Bestimmt den Dateinamen der Rückschreibung (Standard: \"out\").")),
+			mcp.Description("suffix for the edited version, e.g. \"de\"; names the files put_chunk writes (default: \"out\")")),
 		mcp.WithString("outDir",
-			mcp.Description("Zielordner für die Chunks (Standard: chunks/ neben der Quelldatei)")),
+			mcp.Description("directory for the chunks (default: chunks/ next to the source file)")),
 	)
 }
 
 func splitHandler(_ context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	path := argString(req, "filePath")
 	if path == "" {
-		return mcp.NewToolResultError("filePath ist erforderlich"), nil
+		return mcp.NewToolResultError("filePath is required"), nil
 	}
 	st, err := os.Stat(path)
 	if err != nil || st.IsDir() {
-		return mcp.NewToolResultError(fmt.Sprintf("Datei nicht gefunden: %s", path)), nil
+		return mcp.NewToolResultError(fmt.Sprintf("file not found: %s", path)), nil
 	}
 	size := argInt(req, "size", 8000)
 	if size < 200 {
-		return mcp.NewToolResultError("size muss mindestens 200 sein"), nil
+		return mcp.NewToolResultError("size must be at least 200"), nil
 	}
 
 	doc, err := split.SplitFileDoc(path, size)
 	if err != nil {
-		return mcp.NewToolResultError(fmt.Sprintf("Fehler beim Verarbeiten: %v", err)), nil
+		return mcp.NewToolResultError(fmt.Sprintf("split failed: %v", err)), nil
 	}
 	if len(doc.Chunks) == 0 {
-		return mcp.NewToolResultError("Keine Chunks erstellt - Datei ist leer?"), nil
+		return mcp.NewToolResultError("no chunks produced - is the file empty?"), nil
 	}
 
 	outDir := argString(req, "outDir")
@@ -125,20 +125,20 @@ func splitHandler(_ context.Context, req mcp.CallToolRequest) (*mcp.CallToolResu
 
 	m := job.New(path, size, argString(req, "target"), doc)
 	if err := m.Write(outDir, doc.Chunks); err != nil {
-		return mcp.NewToolResultError(fmt.Sprintf("Fehler beim Schreiben: %v", err)), nil
+		return mcp.NewToolResultError(fmt.Sprintf("cannot write chunks: %v", err)), nil
 	}
 
 	b := &strings.Builder{}
-	fmt.Fprintf(b, "✅ %s in %d Teile gesplittet (Budget %d Zeichen)\n", filepath.Base(path), m.TotalParts, size)
-	fmt.Fprintf(b, "jobId: %s\nOrdner: %s\n\n", m.ID, outDir)
+	fmt.Fprintf(b, "Split %s into %d parts (budget %d chars)\n", filepath.Base(path), m.TotalParts, size)
+	fmt.Fprintf(b, "jobId: %s\ndirectory: %s\n\n", m.ID, outDir)
 	for _, p := range m.Parts {
 		title := p.Heading
 		if title == "" {
-			title = "(ohne Überschrift)"
+			title = "(no heading)"
 		}
-		fmt.Fprintf(b, "  %2d/%d  %6d Zeichen  %s\n", p.Part, m.TotalParts, p.Chars, title)
+		fmt.Fprintf(b, "  %2d/%d  %6d chars  %s\n", p.Part, m.TotalParts, p.Chars, title)
 	}
-	fmt.Fprintf(b, "\nNächster Schritt: get_chunk(jobId=%q, part=1) - der Inhalt kommt teilweise, nie am Stück.\n", m.ID)
+	fmt.Fprintf(b, "\nNext: get_chunk(jobId=%q, part=1). Content arrives one part at a time, never all at once.\n", m.ID)
 	return mcp.NewToolResultText(b.String()), nil
 }
 
@@ -146,12 +146,12 @@ func splitHandler(_ context.Context, req mcp.CallToolRequest) (*mcp.CallToolResu
 
 func getChunkTool() mcp.Tool {
 	return mcp.NewTool("get_chunk",
-		mcp.WithDescription("Liefert den Text genau eines Teils aus einem Split. "+
-			"Wurde der Teil schon per put_chunk zurückgeschrieben, kommt die bearbeitete Fassung."),
+		mcp.WithDescription("Return the text of exactly one part of a split. "+
+			"If that part was already written back with put_chunk, the edited version is returned."),
 		mcp.WithString("jobId", mcp.Required(),
-			mcp.Description("Auftrags-ID aus split_markdown")),
+			mcp.Description("job ID returned by split_markdown")),
 		mcp.WithNumber("part", mcp.Required(),
-			mcp.Description("Teilnummer, 1-basiert")),
+			mcp.Description("part number, 1-based")),
 	)
 }
 
@@ -165,11 +165,11 @@ func getChunkHandler(_ context.Context, req mcp.CallToolRequest) (*mcp.CallToolR
 	if err != nil {
 		return mcp.NewToolResultError(err.Error()), nil
 	}
-	state := "Original"
+	state := "original"
 	if edited {
-		state = "bereits bearbeitet"
+		state = "already edited"
 	}
-	return mcp.NewToolResultText(fmt.Sprintf("--- Teil %d/%d (%s, %d Zeichen) ---\n%s",
+	return mcp.NewToolResultText(fmt.Sprintf("--- part %d/%d (%s, %d chars) ---\n%s",
 		n, m.TotalParts, state, len(text), text)), nil
 }
 
@@ -177,14 +177,15 @@ func getChunkHandler(_ context.Context, req mcp.CallToolRequest) (*mcp.CallToolR
 
 func putChunkTool() mcp.Tool {
 	return mcp.NewTool("put_chunk",
-		mcp.WithDescription("Schreibt die bearbeitete (z. B. übersetzte) Fassung eines Teils zurück. "+
-			"Das Original bleibt unangetastet; merge_chunks setzt später alles zusammen."),
+		mcp.WithDescription("Write back the edited (e.g. translated) version of one part. "+
+			"The original chunk is left untouched, so a run can be resumed or redone part by "+
+			"part; merge_chunks assembles everything at the end."),
 		mcp.WithString("jobId", mcp.Required(),
-			mcp.Description("Auftrags-ID aus split_markdown")),
+			mcp.Description("job ID returned by split_markdown")),
 		mcp.WithNumber("part", mcp.Required(),
-			mcp.Description("Teilnummer, 1-basiert")),
+			mcp.Description("part number, 1-based")),
 		mcp.WithString("text", mcp.Required(),
-			mcp.Description("Der bearbeitete Markdown-Text dieses Teils")),
+			mcp.Description("the edited Markdown text for this part")),
 	)
 }
 
@@ -196,22 +197,22 @@ func putChunkHandler(_ context.Context, req mcp.CallToolRequest) (*mcp.CallToolR
 	n := argInt(req, "part", 0)
 	text, ok := args(req)["text"].(string)
 	if !ok {
-		return mcp.NewToolResultError("text ist erforderlich"), nil
+		return mcp.NewToolResultError("text is required"), nil
 	}
 	if strings.TrimSpace(text) == "" {
-		return mcp.NewToolResultError("text ist leer - das würde den Teil verlieren"), nil
+		return mcp.NewToolResultError("text is empty - that would discard the part"), nil
 	}
 	if err := m.WriteChunk(n, text); err != nil {
 		return mcp.NewToolResultError(err.Error()), nil
 	}
 	done, missing := m.Progress()
 	b := &strings.Builder{}
-	fmt.Fprintf(b, "✅ Teil %d gespeichert (%d Zeichen). Fortschritt: %d/%d\n", n, len(text), done, m.TotalParts)
+	fmt.Fprintf(b, "Saved part %d (%d chars). Progress: %d/%d\n", n, len(text), done, m.TotalParts)
 	if len(missing) > 0 {
-		fmt.Fprintf(b, "Offen: %s\n", joinInts(missing))
-		fmt.Fprintf(b, "Nächster Schritt: get_chunk(jobId=%q, part=%d)\n", m.ID, missing[0])
+		fmt.Fprintf(b, "Remaining: %s\n", joinInts(missing))
+		fmt.Fprintf(b, "Next: get_chunk(jobId=%q, part=%d)\n", m.ID, missing[0])
 	} else {
-		fmt.Fprintf(b, "Alle Teile da - jetzt merge_chunks(jobId=%q).\n", m.ID)
+		fmt.Fprintf(b, "All parts are in - call merge_chunks(jobId=%q).\n", m.ID)
 	}
 	return mcp.NewToolResultText(b.String()), nil
 }
@@ -220,11 +221,11 @@ func putChunkHandler(_ context.Context, req mcp.CallToolRequest) (*mcp.CallToolR
 
 func jobStatusTool() mcp.Tool {
 	return mcp.NewTool("job_status",
-		mcp.WithDescription("Zeigt Fortschritt und Teileliste eines Splits, ohne Inhalt zu laden."),
+		mcp.WithDescription("Show progress and the part list of a split without loading any content."),
 		mcp.WithString("jobId",
-			mcp.Description("Auftrags-ID aus split_markdown")),
+			mcp.Description("job ID returned by split_markdown")),
 		mcp.WithString("chunksDir",
-			mcp.Description("Alternativ: Chunk-Ordner mit index.json")),
+			mcp.Description("alternative to jobId: the chunk directory containing index.json")),
 	)
 }
 
@@ -235,7 +236,7 @@ func jobStatusHandler(_ context.Context, req mcp.CallToolRequest) (*mcp.CallTool
 	}
 	done, missing := m.Progress()
 	b := &strings.Builder{}
-	fmt.Fprintf(b, "Job %s - %s\nOrdner: %s\nFortschritt: %d/%d bearbeitet\n\n",
+	fmt.Fprintf(b, "Job %s - %s\ndirectory: %s\nprogress: %d/%d edited\n\n",
 		m.ID, filepath.Base(m.SourceFile), m.Dir(), done, m.TotalParts)
 	for _, p := range m.Parts {
 		mark := "·"
@@ -246,12 +247,12 @@ func jobStatusHandler(_ context.Context, req mcp.CallToolRequest) (*mcp.CallTool
 		}
 		title := p.Heading
 		if title == "" {
-			title = "(ohne Überschrift)"
+			title = "(no heading)"
 		}
-		fmt.Fprintf(b, "  %s %2d  %6d Zeichen  %s\n", mark, p.Part, p.Chars, title)
+		fmt.Fprintf(b, "  %s %2d  %6d chars  %s\n", mark, p.Part, p.Chars, title)
 	}
 	if len(missing) > 0 {
-		fmt.Fprintf(b, "\nOffen: %s\n", joinInts(missing))
+		fmt.Fprintf(b, "\nRemaining: %s\n", joinInts(missing))
 	}
 	return mcp.NewToolResultText(b.String()), nil
 }
@@ -260,15 +261,15 @@ func jobStatusHandler(_ context.Context, req mcp.CallToolRequest) (*mcp.CallTool
 
 func mergeTool() mcp.Tool {
 	return mcp.NewTool("merge_chunks",
-		mcp.WithDescription("Setzt die Teile eines Splits wieder zu einem Dokument zusammen. "+
-			"Je Teil wird die bearbeitete Fassung genommen, falls vorhanden, sonst das Original. "+
-			"Wurde nichts bearbeitet, läuft zusätzlich der Roundtrip-Check gegen die Quelle."),
+		mcp.WithDescription("Reassemble the parts of a split into one document. Each part uses its "+
+			"edited version if one exists, otherwise the original. When nothing was edited, the "+
+			"round-trip is additionally verified byte for byte against the source."),
 		mcp.WithString("jobId",
-			mcp.Description("Auftrags-ID aus split_markdown")),
+			mcp.Description("job ID returned by split_markdown")),
 		mcp.WithString("chunksDir",
-			mcp.Description("Alternativ: Chunk-Ordner mit index.json")),
+			mcp.Description("alternative to jobId: the chunk directory containing index.json")),
 		mcp.WithString("out",
-			mcp.Description("Zielpfad (Standard: <Quelle>.<target>.md bzw. <Quelle>.merged)")),
+			mcp.Description("output path (default: <source>.<target>.md, or <source>.merged)")),
 	)
 }
 
@@ -283,7 +284,7 @@ func mergeHandler(_ context.Context, req mcp.CallToolRequest) (*mcp.CallToolResu
 	}
 	merged, err := split.MergeFilesGaps(paths, m.Gaps)
 	if err != nil {
-		return mcp.NewToolResultError(fmt.Sprintf("Fehler beim Zusammenfügen: %v", err)), nil
+		return mcp.NewToolResultError(fmt.Sprintf("merge failed: %v", err)), nil
 	}
 
 	out := argString(req, "out")
@@ -291,15 +292,15 @@ func mergeHandler(_ context.Context, req mcp.CallToolRequest) (*mcp.CallToolResu
 		out = defaultMergeTarget(m)
 	}
 	if err := os.WriteFile(out, []byte(merged), 0o644); err != nil {
-		return mcp.NewToolResultError(fmt.Sprintf("Fehler beim Schreiben von %s: %v", out, err)), nil
+		return mcp.NewToolResultError(fmt.Sprintf("cannot write %s: %v", out, err)), nil
 	}
 
 	b := &strings.Builder{}
-	fmt.Fprintf(b, "✅ %d Teile zusammengefügt → %s (%d Zeichen)\n", len(paths), out, len(merged))
+	fmt.Fprintf(b, "Merged %d parts into %s (%d chars)\n", len(paths), out, len(merged))
 	if translated > 0 {
-		fmt.Fprintf(b, "Davon bearbeitet: %d/%d", translated, m.TotalParts)
+		fmt.Fprintf(b, "Edited parts used: %d/%d", translated, m.TotalParts)
 		if translated < m.TotalParts {
-			b.WriteString(" - der Rest stammt unverändert aus dem Original")
+			b.WriteString("; the rest came unchanged from the original")
 		}
 		b.WriteString("\n")
 	} else if m.SourceFile != "" {
