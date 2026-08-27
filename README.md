@@ -111,20 +111,26 @@ chunks/
                         #           gaps[], parts[{part,file,chars,heading}]
 ```
 
-### Merge mode (Rückweg)
+### Merge mode
 
 ```bash
-# Chunks wieder zusammensetzen (liest chunks/index.json, Ordner via -dir angibbar)
+# reassemble via chunks/index.json
 ./bin/mcp-md-splitter -merge -dir chunks/
-./bin/mcp-md-splitter -merge -dir chunks/ -out zusammen.md   # anderer Zielpfad
+./bin/mcp-md-splitter -merge -dir chunks/ -out combined.md
 ```
 
-Die Ausgabe steht standardmäßig als `<quelle>.merged` neben der Originaldatei. Der
-Roundtrip-Check vergleicht zuerst byte-genau (`Canonical`) und erst danach tolerant
-(`Normalize`) — so kann die Normalisierung keine echte Abweichung mehr verdecken.
-Gemeldet wird ✅ byte-genau / ✅ nur Whitespace / ⚠️ abweichend.
-Ohne `index.json` werden alle `*-part-NN.md` lexikografisch sortiert zusammengesetzt;
-ohne die `gaps` aus dem Index wird an jeder Grenze eine Leerzeile angenommen.
+The result is written next to the source as `<source>.merged`, or as
+`<source>.<target>.md` when the parts were translated. Each part uses its edited
+version if one exists and the original otherwise, so a half-finished run still
+merges.
+
+The round-trip check compares byte-exactly (`Canonical`) first and only then
+tolerantly (`Normalize`), so the normalization can no longer hide a real
+difference. It reports byte-identical / whitespace-only / diverging.
+
+Without an `index.json`, all `*-part-NN.md` files are merged in lexicographic
+order; without the `gaps` from the manifest, one blank line is assumed at every
+boundary.
 
 ### MCP mode (default)
 
@@ -243,6 +249,38 @@ context window at all.
 In both modes, inline code, URLs, link and image targets, reference links,
 footnotes and inline HTML are masked. Image *alt text* stays translatable on
 purpose: it is prose a reader sees, while the path is not.
+
+### Models whose chat template will not take our request
+
+Some models ship a chat template an OpenAI-compatible layer cannot satisfy.
+TranslateGemma is the case in point: it rejects a system role outright
+("Conversations must start with a user prompt") and wants the user content to
+be a mapping carrying `source_lang_code` and `target_lang_code` — fields the
+OpenAI schema strips before the template ever sees them. Every variant returns
+HTTP 400.
+
+Its template turns out to build ordinary English prose, not exotic control
+tokens, so rendering the turn here instead of on the server sidesteps the whole
+problem:
+
+```bash
+export MDSPLIT_LLM_TRANSPORT=completions
+export MDSPLIT_LLM_TEMPLATE='<start_of_turn>user
+You are a professional English (en) to German (de) translator. Produce only the
+German translation, without any additional explanations or commentary. Please
+translate the following English text into German:
+
+
+{{.User}}<end_of_turn>
+<start_of_turn>model
+'
+```
+
+The template is a Go template with `.System`, `.User`, `.SourceLang` and
+`.TargetLang`; `MDSPLIT_LLM_STOP` sets the stop sequences (default
+`<end_of_turn>`). Block mode is the right companion here — a model that takes a
+language pair and nothing else has no channel for a rule like "leave the code
+alone", so the structure has to be guaranteed rather than requested.
 
 ### What is checked before anything is stored
 
