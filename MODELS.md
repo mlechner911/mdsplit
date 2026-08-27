@@ -139,10 +139,79 @@ in the Modelfile, so sending ours would replace the part worth keeping:
 are not candidates for English → German whatever the request format. Worth
 checking a specialised model's direction before its size.
 
+## Reasoning models: the setting that decides everything
+
+A reasoning model spends its budget deliberating over a translation. The same
+sentence, the same endpoint, the same answer:
+
+| `reasoning_effort` | Output tokens | Steady state |
+|---|---:|---:|
+| not set | 2977 | 40.2 s |
+| `"minimal"` / `"low"` / `"medium"` / `"high"` | 2977 each | 40.2 s |
+| **`"none"`** | **24** | **0.56 s** |
+
+**Seventy-two times faster for an identical translation.** The level does not
+matter — four different values produced the same token count. Only `"none"`
+does anything.
+
+Once thinking is off, `qwen3.5:35b` is the fastest model measured here, ahead
+of a specialised 27B translator at 1.42 s. It also reads a glossary, which a
+specialised translator cannot. Both arguments point the same way, which is
+rare.
+
+### Four ways to turn it off that report success and do not work
+
+This is the part worth remembering. Every one of these is accepted without
+complaint, and only the last does anything.
+
+| | Reported | Actual |
+|---|---|---|
+| `PARAMETER think false` in a Modelfile | `success` | 4716 tokens, unchanged. Thinking is a request field, not a model parameter |
+| `PARAMETER stop "<think>"` | `success` | 4691 tokens generated, then the stop fires **before the answer**: empty reply with `finish_reason: "stop"` |
+| `reasoning_effort: "low"` | accepted | reduces to 2977, but no further than any other level |
+| `reasoning_effort: "off"` | **rejected** | not a valid value here, whatever a search result says. The server names the ones that are |
+| `reasoning_effort: "none"` | accepted | **24 tokens** |
+
+The stop-token variant is the dangerous one: full cost paid, nothing returned,
+and `finish_reason: "stop"` is precisely the signal a client reads as
+*complete*. Only an empty-content check catches it.
+
+```bash
+mcp-md-splitter -translate -dir chunks/ -lang de \
+  -llm-model qwen3.5:35b -llm-reasoning none
+```
+
+### How not to measure this
+
+Three of our own attempts produced numbers that meant nothing, and the failures
+generalise.
+
+**Probing an endpoint that is busy.** The first "77 s per request" was a probe
+queued behind a running translation job.
+
+**Switching models between measurements.** Changing model or options makes
+Ollama load 17–24 GB from disk, and that load lands inside the measurement.
+Early figures of 65 s were mostly that.
+
+**One sample per configuration.** `"minimal"` measured 4716 tokens once and
+2977 another time. A single reading turned into a claim that levels do nothing,
+which was wrong.
+
+What works: one model, `keep_alive` long enough that it is not evicted, two
+warm-up requests, then four measured, with nothing else touching the server.
+The result was 40.16 / 40.18 / 40.22 / 40.15 — that consistency is what a
+usable measurement looks like.
+
 ## Context windows
 
 `translategemma`'s model card states **2K tokens total input** for the whole
 family, 4b through 27b — a bigger one buys quality, not room.
+
+A large context slot is not the problem it looks like. The server log showed
+`n_ctx_slot = 128000` and 62.8 MiB checkpoints for a 115-token prompt, which
+looked like the cause of the slowness. Rebuilding the model with
+`num_ctx 8192` changed the time by 0.1 s: 65.4 s against 65.4 s. The log was a
+red herring; the reasoning tokens were the answer.
 
 Chunk sizes matter less than they look. With `-size 8000`, section-aligned
 cutting produces chunks averaging ~2000–2800 characters on heading-rich
