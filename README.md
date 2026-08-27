@@ -482,6 +482,46 @@ The difference from a retrieval server built on embeddings is that this is
 with no index to build, nothing to keep in sync, and no window that can start
 in the middle of a block.
 
+## Telling your agent how to use it
+
+Registering the server is not enough. The tool descriptions say what each tool
+does, but a model only reads the description of a tool it has already decided
+to call — so the ordering rules arrive too late. Put this in your project's
+`AGENTS.md`, `CLAUDE.md` or system prompt:
+
+```markdown
+## Markdown documents
+
+The `md-splitter` MCP server is available. Use it instead of reading Markdown
+files directly.
+
+- **Looking something up:** call `outline(filePath)` first, then
+  `read_section` for the one section you need. Do not read a whole document
+  to answer a question about part of it.
+- **Translating or rewriting:** `split_markdown` → `build_glossary` once →
+  `translate_chunk` per part → `merge_chunks`. Never read the document into
+  the conversation first; that is the cost the tool exists to avoid.
+- **Never paste a chunk's text into a message.** `put_chunk` and
+  `translate_chunk` write to disk. The text is supposed to travel from file to
+  model and back without passing through the conversation.
+- **A rejected part is not a failure to work around.** It was not stored, so
+  the document is intact. Call `translate_chunk` again for that part; the
+  others are unaffected.
+- **Do not loop `get_chunk` over every part.** Holding all of them at once is
+  the situation the split was made to prevent.
+```
+
+That last rule is the one worth keeping. A model handed a chunking tool will
+often fetch every chunk and reassemble them in its own context, which costs
+more than reading the file would have — the tool has been used and its purpose
+defeated in the same breath.
+
+Endpoint settings belong in `.mcp.json` under `env`, never in a prompt: a
+model cannot pass a token it was never given, and that is the point.
+
+Note that this repo's own `AGENTS.md` is a different document — it briefs
+agents *working on* the splitter, not agents *using* it.
+
 ## Project Structure
 
 Standard Go `cmd`/`internal` layout:
