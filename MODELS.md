@@ -12,15 +12,36 @@ models come apart.
 
 English → German, `-mode block`, with the reviewed `i18n/de/glossary.json`.
 
+## The two machines
+
+Latency figures mean nothing without them.
+
+| | Ollama box | LM Studio box |
+|---|---|---|
+| CPU | Apple M2 Ultra | AMD Ryzen 7 2700X (8 cores, AVX2) |
+| Memory | 64 GB unified | 64 GB system RAM |
+| GPU | integrated, shares the unified memory | NVIDIA RTX 3060, **12 GB VRAM**, CUDA |
+| Serves | `ollama` on `:11434` | LM Studio 0.4.2 on `:1234` |
+
+The 12 GB is VRAM, not a memory ceiling. LM Studio's *Limit Model Offload to
+Dedicated GPU Memory* is off here, so a model larger than 12 GB still loads —
+it spills into the 64 GB of system RAM and runs slower. *Offload KV Cache to
+GPU Memory* is on, which matters for this workload: our requests are many and
+small, and the cache is what a large context slot allocates per request.
+
+The two are not comparable as hardware and the table below does not try to.
+What is comparable is a model against itself under two settings, or two models
+on the same machine.
+
 ## What was measured
 
 | Model | Endpoint | On disk | Requests | Short fragments usable | Left in English | Chars |
 |---|---|---:|---:|---:|---:|---:|
-| `qwen3.5:35b` | Ollama, M2 Ultra 64 GB | 23.9 GB Q4 | 4 | 20/20 | 0 | 1501 |
-| `gemma3:27b` | Ollama, M2 Ultra 64 GB | 17.4 GB Q4 | 4 | 20/20 | 3 | 1335 |
-| `qwen2.5-7b-instruct` | LM Studio, 12 GB GPU | 4.7 GB Q4 | 4 | 20/20 | 0 | 1509 |
-| `zongwei/gemma3-translator:1b` | Ollama, M2 Ultra 64 GB | 0.8 GB Q4 | 4 | 20/20 | 0 | 1481 |
-| `qwen2.5-7b-instruct` *(before batching)* | LM Studio | 4.7 GB Q4 | 23 | 13/23 | 10 | **half the table English** |
+| `qwen3.5:35b` | Ollama, M2 Ultra | 23.9 GB Q4 | 4 | 20/20 | 0 | 1501 |
+| `gemma3:27b` | Ollama, M2 Ultra | 17.4 GB Q4 | 4 | 20/20 | 3 | 1335 |
+| `qwen2.5-7b-instruct` | LM Studio, RTX 3060 | 4.7 GB Q4 | 4 | 20/20 | 0 | 1509 |
+| `zongwei/gemma3-translator:1b` | Ollama, M2 Ultra | 0.8 GB Q4 | 4 | 20/20 | 0 | 1481 |
+| `qwen2.5-7b-instruct` *(before batching)* | LM Studio, RTX 3060 | 4.7 GB Q4 | 23 | 13/23 | 10 | **half the table English** |
 
 The last row is the same model on the same text a day earlier, one request per
 fragment. The difference is not the model.
@@ -218,6 +239,11 @@ cutting produces chunks averaging ~2000–2800 characters on heading-rich
 Markdown, because a cut lands before a heading once a chunk has substance. A
 document *without* headings does fill to 8000. On a small context window, pass
 `-size 3000` and the worst case is covered too.
+
+A 12 GB card is not the constraint it looks like either, as long as offload to
+system RAM is allowed: a model that does not fit in VRAM still runs, just
+slowly. What decides whether a part fits is the model's context length, which
+is a separate setting from either.
 
 ## Reproducing this
 
