@@ -311,7 +311,7 @@ func TestSegmentPrompt_ReportsDistinctTerms(t *testing.T) {
 		Language: "de",
 		Glossary: map[string]string{"code fence": "Code-Zaun", "manifest": "Manifest"},
 	}
-	prompt, applied := segmentPrompt(opts, "The code fence and the manifest")
+	prompt, applied := segmentPrompt(&opts, "The code fence and the manifest")
 	if len(applied) != 2 {
 		t.Fatalf("erwartet 2 Begriffe, bekommen %v", applied)
 	}
@@ -321,7 +321,7 @@ func TestSegmentPrompt_ReportsDistinctTerms(t *testing.T) {
 	// Derselbe Begriff in mehreren Fragmenten bleibt ein Begriff.
 	seen := map[string]bool{}
 	for _, frag := range []string{"a code fence here", "another code fence", "the manifest"} {
-		_, ts := segmentPrompt(opts, frag)
+		_, ts := segmentPrompt(&opts, frag)
 		for _, x := range ts {
 			seen[x] = true
 		}
@@ -402,5 +402,36 @@ func TestProtect_LiteralSentinelInSource(t *testing.T) {
 	back, err := restore(masked, tokens)
 	if err != nil || back != in {
 		t.Errorf("Roundtrip: %q / %v", back, err)
+	}
+}
+
+// TestGlossary_MatchesSingularAndPlural hält den Fehler fest, den erst die
+// fertige Übersetzung zeigte: das Glossar kannte "code fences", der Text sagte
+// an zwei Stellen "code fence", die Regel griff dort nicht - und drei von vier
+// Sprachen erfanden für genau diese Sätze etwas Eigenes.
+func TestGlossary_MatchesSingularAndPlural(t *testing.T) {
+	opts := Options{Language: "de", Glossary: map[string]string{
+		"code fences": "Code-Fences",
+		"manifest":    "Manifest",
+		"part":        "Teil",
+	}}
+	cases := map[string]bool{
+		"Code fences, tables and list items":     true,
+		"a code fence ends up half in one piece": true,
+		"the code fence rule holds":              true,
+		"read the manifest first":                true,
+		"several manifests":                      true,
+		"nothing relevant here":                  false,
+	}
+	for frag, want := range cases {
+		_, applied := segmentPrompt(&opts, frag)
+		got := len(applied) > 0
+		if got != want {
+			t.Errorf("%q -> %v, erwartet %v (applied=%v)", frag, got, want, applied)
+		}
+	}
+	// Wortgrenzen: "part" darf nicht in "particular" treffen.
+	if _, applied := segmentPrompt(&opts, "a particular case"); len(applied) != 0 {
+		t.Errorf("Teilwort-Treffer: %v", applied)
 	}
 }

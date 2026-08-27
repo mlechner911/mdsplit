@@ -10,6 +10,7 @@ package translate
 import (
 	"context"
 	"fmt"
+	"regexp"
 	"strings"
 
 	"github.com/mlechner911/mdsplit/internal/job"
@@ -24,6 +25,46 @@ var languages = map[string]string{
 	"it": "Italian", "pt": "Portuguese", "nl": "Dutch", "pl": "Polish",
 	"ru": "Russian", "ja": "Japanese", "zh": "Chinese", "ko": "Korean",
 	"tr": "Turkish", "cs": "Czech", "sv": "Swedish", "da": "Danish",
+}
+
+// termMatchers compiles one matcher per glossary term.
+//
+// An exact substring is not enough. The extractor finds a term in whichever
+// form recurs - "code fences" - while the prose uses both numbers, and the
+// singular occurrences then get no rule at all. Measured on this README: the
+// glossary said code fences, the text said "a code fence ends up half in one
+// piece", the rule never fired, and three of four languages invented something
+// (Code-Spaltengrenze, una valla de código, une balise de code) for exactly
+// those sentences.
+//
+// The last word of a term is matched with an optional plural, on word
+// boundaries so that "part" cannot match "particular".
+func termMatchers(gloss map[string]string) map[string]*regexp.Regexp {
+	out := make(map[string]*regexp.Regexp, len(gloss))
+	for term := range gloss {
+		words := strings.Fields(term)
+		if len(words) == 0 {
+			continue
+		}
+		parts := make([]string, len(words))
+		for i, w := range words {
+			parts[i] = regexp.QuoteMeta(w)
+		}
+		last := words[len(words)-1]
+		// Nur ein "s" abschneiden. Zweimal zu kürzen macht aus "fences" den
+		// Stamm "fenc", und der trifft "fences", aber nicht "fence" - also
+		// genau die Form, deretwegen das hier existiert.
+		stem := strings.TrimSuffix(last, "s")
+		if len(stem) >= 3 {
+			parts[len(parts)-1] = regexp.QuoteMeta(stem) + `(?:e?s)?`
+		}
+		rx, err := regexp.Compile(`(?i)\b` + strings.Join(parts, `[\s-]+`) + `\b`)
+		if err != nil {
+			continue
+		}
+		out[term] = rx
+	}
+	return out
 }
 
 // prompt builds the payload for one request, carrying the language pair so a
@@ -41,6 +82,14 @@ func (o Options) prompt(system, user string) llm.PromptData {
 		SourceLangName: LanguageName(src),
 		TargetLangName: LanguageName(o.Language),
 	}
+}
+
+// matcher returns the compiled matcher for a glossary term.
+func (o *Options) matcher(term string) *regexp.Regexp {
+	if o.matchers == nil {
+		o.matchers = termMatchers(o.Glossary)
+	}
+	return o.matchers[term]
 }
 
 // LanguageName resolves a code or name into something to put in a prompt.
@@ -81,6 +130,8 @@ type Options struct {
 	// Glossary pins terminology. Only entries whose term occurs in the chunk
 	// are sent, which keeps the prompt small and the rules relevant.
 	Glossary map[string]string
+	// matchers is built lazily from Glossary; see termMatchers.
+	matchers map[string]*regexp.Regexp
 	// SkipVerify stores the reply even when its structure drifted. Off by
 	// default: a damaged chunk is worse than a missing one, because the damage
 	// is only found when the whole document is reassembled.
@@ -106,7 +157,7 @@ type Result struct {
 }
 
 // systemPrompt builds the instruction sent with every chunk.
-func systemPrompt(opts Options, chunk string) (string, []string) {
+func systemPrompt(opts *Options, chunk string) (string, []string) {
 	task := opts.Instruction
 	if task == "" {
 		lang := LanguageName(opts.Language)
@@ -133,9 +184,8 @@ Rules:
 	var applied []string
 	if len(opts.Glossary) > 0 {
 		var lines []string
-		lower := strings.ToLower(chunk)
 		for term, want := range opts.Glossary {
-			if strings.Contains(lower, strings.ToLower(term)) {
+			if rx := opts.matcher(term); rx != nil && rx.MatchString(chunk) {
 				lines = append(lines, fmt.Sprintf("- %s = %s", term, want))
 				applied = append(applied, term)
 			}
@@ -220,7 +270,7 @@ func Part(ctx context.Context, c *llm.Client, m *job.Manifest, n int, opts Optio
 	switch mode {
 	case ModeChunk:
 		masked, tokens := maskChunk(src)
-		system, applied := systemPrompt(opts, masked)
+		system, applied := systemPrompt(&opts, masked)
 		reply, err := c.Ask(ctx, opts.prompt(system, masked))
 		if err != nil {
 			return Result{}, fmt.Errorf("part %d: %w", n, err)

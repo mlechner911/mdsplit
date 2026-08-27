@@ -246,7 +246,7 @@ func textPieces(s string) []piece {
 // glossary rather than in the counting. Instruction-capable models
 // honour it; a pure translation model ignores it, which is exactly why the
 // structure is guaranteed mechanically rather than asked for.
-func segmentPrompt(opts Options, fragment string) (string, []string) {
+func segmentPrompt(opts *Options, fragment string) (string, []string) {
 	task := opts.Instruction
 	if task == "" {
 		lang := LanguageName(opts.Language)
@@ -268,9 +268,8 @@ Rules:
 	var applied []string
 	if len(opts.Glossary) > 0 {
 		var lines []string
-		lower := strings.ToLower(fragment)
 		for term, want := range opts.Glossary {
-			if strings.Contains(lower, strings.ToLower(term)) {
+			if rx := opts.matcher(term); rx != nil && rx.MatchString(fragment) {
 				lines = append(lines, fmt.Sprintf("- %s = %s", term, want))
 				applied = append(applied, term)
 			}
@@ -303,7 +302,7 @@ func byBlocks(ctx context.Context, c *llm.Client, chunk string, opts Options, st
 		masked, tokens := protect(p.text)
 		out, hit := memo[masked]
 		if !hit {
-			system, applied := segmentPrompt(opts, p.text)
+			system, applied := segmentPrompt(&opts, p.text)
 			for _, t := range applied {
 				st.terms[t] = true
 			}
