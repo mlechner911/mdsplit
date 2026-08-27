@@ -330,3 +330,40 @@ func TestSegmentPrompt_ReportsDistinctTerms(t *testing.T) {
 		t.Errorf("erwartet 2 verschiedene Begriffe über drei Fragmente, bekommen %d: %v", len(seen), seen)
 	}
 }
+
+// TestFitFragment_RejectsPromptEcho hält den Fehler fest, den erst die
+// Übersetzung des eigenen READMEs zutage brachte: bei einem Dreiwort-Fragment
+// kann ein kleines Modell Anweisung und Inhalt nicht mehr trennen und gibt die
+// Regeln zurück. VerifyStructure ließ das durch - die Tabelle hatte weiter
+// sechs Zeilen und dieselben Pipes.
+func TestFitFragment_RejectsPromptEcho(t *testing.T) {
+	echoes := []string{
+		"RULES: - Output ONLY the result. No quotes, no commentary, no explanation. - Dies ist ein Fragment eines größeren Dokuments.",
+		"Rules: - This is a fragment of a larger document. Do not add or remove sentences.",
+		"- Marker wie ⟦0⟧ sind Platzhalter. Reproduziere jedes genau einmal unverändert.",
+	}
+	for _, e := range echoes {
+		if _, err := fitFragment("never transmitted", e); err == nil {
+			t.Errorf("Prompt-Echo nicht erkannt: %.50q", e)
+		}
+	}
+	// Eine echte Übersetzung desselben Fetzens muss durchgehen.
+	if _, err := fitFragment("never transmitted", "nie übertragen"); err != nil {
+		t.Errorf("saubere Übersetzung abgelehnt: %v", err)
+	}
+}
+
+// TestFitFragment_RejectsRunawayLength: ein Fetzen, der als Absatz zurückkommt,
+// ist keine Übersetzung - egal wie plausibel der Absatz klingt.
+func TestFitFragment_RejectsRunawayLength(t *testing.T) {
+	src := "one per fragment"
+	long := "Es ist erlaubt, in bestimmten Bereichen zu arbeiten, solange man die " +
+		"gesetzlichen Vorschriften einhält und die zuständige Behörde vorab informiert wurde."
+	if _, err := fitFragment(src, long); err == nil {
+		t.Error("Antwort um ein Vielfaches zu lang wurde nicht erkannt")
+	}
+	// Deutsch darf länger werden, nur nicht um ein Vielfaches.
+	if _, err := fitFragment(src, "eine Anfrage pro Fragment"); err != nil {
+		t.Errorf("normale Längenzunahme abgelehnt: %v", err)
+	}
+}

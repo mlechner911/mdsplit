@@ -309,6 +309,21 @@ func byBlocks(ctx context.Context, c *llm.Client, chunk string, opts Options, st
 // blankLineRx finds a run of newlines that would end a block.
 var blankLineRx = regexp.MustCompile(`\n[ \t]*\n[\s]*`)
 
+// echoRx catches a reply that contains our own instructions instead of a
+// translation of the fragment.
+//
+// A short, imperative fragment - a table cell reading "never transmitted" or
+// "reproduced literally" - is barely distinguishable from a rule, and a small
+// model answers by translating the rules. Measured on this README: the "Two
+// modes" table came back with its cells filled with "Output ONLY the result.
+// No quotes, no commentary..." in two languages. VerifyStructure passed it,
+// because the table still had six rows and the same pipes: the structure was
+// intact and the content was nonsense. The English rule text survives even in
+// a translated echo, which is what makes it detectable.
+var echoRx = regexp.MustCompile(`(?i)output only the result|no commentary, no explanation|` +
+	`reproduce each exactly once|fragment of a larger document|markdown emphasis|` +
+	`sind platzhalter|weder sätze`)
+
 var structuralStartRx = regexp.MustCompile("^[ \t]*(?:#{1,6}[ \t]|[-*+][ \t]|\\d{1,9}[.)][ \t]|>|\\||`{3,}|~{3,})")
 
 // fitFragment forces a reply back into the shape of the fragment it replaces.
@@ -333,6 +348,16 @@ func fitFragment(src, out string) (string, error) {
 	}
 	if structuralStartRx.MatchString(out) && !structuralStartRx.MatchString(src) {
 		return "", fmt.Errorf("reply starts a new Markdown construct the source did not: %.40q", out)
+	}
+	if echoRx.MatchString(out) && !echoRx.MatchString(src) {
+		return "", fmt.Errorf("reply contains the instructions instead of a translation: %.60q", out)
+	}
+	// Eine Übersetzung ist nicht ein Vielfaches ihrer Quelle. Der Deckel ist
+	// großzügig - Deutsch läuft 10-20%% länger, Fragmente sind kurz und der
+	// relative Aufschlag dort größer - und trifft trotzdem jede Antwort, die
+	// den Fetzen durch einen Absatz ersetzt.
+	if n, m := len([]rune(src)), len([]rune(out)); m > 4*n+80 {
+		return "", fmt.Errorf("reply is %d characters for a %d-character fragment - not a translation", m, n)
 	}
 	return out, nil
 }
