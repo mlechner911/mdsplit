@@ -112,6 +112,17 @@ type Config struct {
 	UserTemplate string
 	// Stop ends generation. Empty means DefaultStop for completions.
 	Stop []string
+	// Reasoning sets reasoning_effort on the chat transport.
+	//
+	// A reasoning model spends its budget thinking about a translation.
+	// Measured against qwen3.5:35b: 4716 output tokens for one sentence, of
+	// which 24 were the answer - sixty-five seconds where the generation
+	// itself takes a quarter of one. Setting this to "none" brought it to 24
+	// tokens and the same translation.
+	//
+	// Levels below "none" were accepted and did nothing: "low" and "minimal"
+	// both still produced 4716 tokens. Do not read acceptance as effect.
+	Reasoning string
 }
 
 // PromptData is what a prompt template can reference. Codes and names are both
@@ -138,6 +149,7 @@ func ConfigFromEnv() Config {
 		Transport:      Transport(os.Getenv("MDSPLIT_LLM_TRANSPORT")),
 		PromptTemplate: os.Getenv("MDSPLIT_LLM_TEMPLATE"),
 		UserTemplate:   os.Getenv("MDSPLIT_LLM_USER_TEMPLATE"),
+		Reasoning:      os.Getenv("MDSPLIT_LLM_REASONING"),
 	}
 	if v := os.Getenv("MDSPLIT_LLM_STOP"); v != "" {
 		c.Stop = strings.Split(v, ",")
@@ -163,7 +175,11 @@ func (c Config) Describe() string {
 		auth = "token set"
 	}
 	t := c.transport()
-	return fmt.Sprintf("%s model=%s transport=%s (%s)", c.url(), c.Model, t, auth)
+	out := fmt.Sprintf("%s model=%s transport=%s (%s)", c.url(), c.Model, t, auth)
+	if r := strings.TrimSpace(c.Reasoning); r != "" {
+		out += " reasoning=" + r
+	}
+	return out
 }
 
 // transport falls back to the chat endpoint.
@@ -218,6 +234,9 @@ type chatRequest struct {
 	Messages    []chatMessage `json:"messages"`
 	Temperature float64       `json:"temperature"`
 	Stream      bool          `json:"stream"`
+	// Reasoning is omitted when empty: a server that does not know the field
+	// rejects the whole request rather than ignoring it.
+	Reasoning string `json:"reasoning_effort,omitempty"`
 }
 
 type chatMessage struct {
@@ -354,6 +373,7 @@ func (c *Client) buildRequest(data PromptData) (string, []byte, error) {
 		Messages:    msgs,
 		Temperature: 0,
 		Stream:      false,
+		Reasoning:   strings.TrimSpace(c.cfg.Reasoning),
 	})
 	if err != nil {
 		return "", nil, fmt.Errorf("encode request: %w", err)

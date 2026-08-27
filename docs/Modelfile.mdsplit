@@ -1,0 +1,67 @@
+# Modelfile for the mdsplit workload.
+#
+#   ollama create mdsplit-qwen -f docs/Modelfile.mdsplit
+#   mcp-md-splitter -translate -dir chunks/ -lang de -llm-model mdsplit-qwen
+#
+# This workload is not a chat. It is a few hundred short, isolated requests
+# with no history, and a server tuned for long conversations pays for context
+# it never uses on every one of them.
+
+FROM qwen3.5:35b
+
+# --- Context -------------------------------------------------------------
+#
+# Ollama defaults this model to a very large slot - 128000 in one measured
+# case. A slot that size allocates KV cache and checkpoints per request; the
+# log showed 32 checkpoints of 62.8 MiB for a 115-token prompt. Nothing here
+# needs it.
+#
+# The arithmetic: in block mode the largest request is the batched list of
+# short fragments, roughly 250 tokens of rules plus 400 of fragments plus up
+# to 300 of glossary, answered in kind - call it 2000. In chunk mode a part of
+# `-size N` characters is about N/3 tokens in and the same again out, so
+# -size 8000 needs ~6000. 8192 covers both with room; drop to 4096 if you only
+# ever run block mode.
+PARAMETER num_ctx 8192
+
+# --- Determinism ---------------------------------------------------------
+#
+# Translation is not a creative task, and a rerun of one rejected part should
+# produce the same answer as the run that rejected it.
+PARAMETER temperature 0
+PARAMETER top_k 1
+
+# --- The one that matters ------------------------------------------------
+#
+# Ollama's default repeat_penalty of 1.1 is wrong for this. Technical prose
+# repeats on purpose: a table where two cells both read "one", a glossary term
+# used in four fragments, the ⟦0⟧ markers that must come back exactly as sent.
+# Penalising repetition pushes the model to vary precisely what has to stay
+# identical - and a changed marker means the whole reply is discarded.
+PARAMETER repeat_penalty 1.0
+
+# --- What does NOT belong here -------------------------------------------
+#
+# Two settings that look right and are not:
+#
+#   PARAMETER think false
+#     `ollama create` accepts it and reports success. It has no effect: the
+#     model still produced 4716 output tokens for a one-sentence translation,
+#     identical to the base. Thinking is a request field, not a model
+#     parameter - pass -llm-reasoning none instead.
+#
+#   PARAMETER stop "<think>" "</think>"
+#     Worse than useless. A reasoning model writes its reasoning first, so the
+#     stop fires just before the answer: 4691 tokens generated, full cost paid,
+#     and the reply comes back empty with finish_reason "stop" - the very
+#     signal a client reads as "complete".
+#
+# --- No SYSTEM here, on purpose ------------------------------------------
+#
+# Ollama uses a Modelfile SYSTEM only when the request carries no system
+# message, and mdsplit sends one: the translation rules, the placeholder
+# convention, and the glossary entries that apply to this fragment. A SYSTEM
+# line here would be silently ignored in normal use.
+#
+# It takes effect only when the client suppresses its own system message,
+# which -llm-user-template does. See Modelfile.mdsplit-de for that variant.

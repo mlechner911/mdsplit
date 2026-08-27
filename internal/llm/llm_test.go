@@ -330,3 +330,34 @@ func TestTranslateGemmaUserTemplate(t *testing.T) {
 		t.Error("Turn-Marker gehören nicht in eine Chat-Nachricht - die setzt der Server")
 	}
 }
+
+// TestReasoning_OmittedWhenEmpty: ein Server, der das Feld nicht kennt, weist
+// die ganze Anfrage ab statt es zu ignorieren - es darf also nur mitgehen,
+// wenn es gesetzt wurde.
+func TestReasoning_OmittedWhenEmpty(t *testing.T) {
+	var got capture
+	srv := fakeEndpoint(t, 200, okChat, &got)
+	defer srv.Close()
+	if _, err := New(Config{BaseURL: srv.URL, Model: "m"}).Chat(context.Background(), "s", "u"); err != nil {
+		t.Fatal(err)
+	}
+	if _, present := got.body["reasoning_effort"]; present {
+		t.Error("reasoning_effort ging ungefragt mit")
+	}
+}
+
+func TestReasoning_SentWhenSet(t *testing.T) {
+	var got capture
+	srv := fakeEndpoint(t, 200, okChat, &got)
+	defer srv.Close()
+	c := New(Config{BaseURL: srv.URL, Model: "m", Reasoning: "none"})
+	if _, err := c.Chat(context.Background(), "s", "u"); err != nil {
+		t.Fatal(err)
+	}
+	if got.body["reasoning_effort"] != "none" {
+		t.Errorf("reasoning_effort = %v, erwartet none", got.body["reasoning_effort"])
+	}
+	if !strings.Contains(c.Config().Describe(), "reasoning=none") {
+		t.Errorf("Statuszeile verschweigt die Einstellung: %s", c.Config().Describe())
+	}
+}

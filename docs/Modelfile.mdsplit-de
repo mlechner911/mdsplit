@@ -1,0 +1,33 @@
+# A fixed English-to-German translator with the rules baked in.
+#
+#   ollama create mdsplit-de -f docs/Modelfile.mdsplit-de
+#   mcp-md-splitter -translate -dir chunks/ -lang de \
+#     -llm-model mdsplit-de -llm-user-template '{{.User}}'
+#
+# The user template is what makes this work: it suppresses mdsplit's own
+# system message, so the SYSTEM below is the one in force. Without it Ollama
+# would use the client's message and ignore everything here.
+#
+# The trade: one model per language pair, and the glossary no longer reaches
+# the model - it travels in the system message this replaces. Worth it when a
+# pipeline is fixed and the per-request prompt should be as small as possible;
+# not worth it when terminology matters.
+
+FROM qwen3.5:35b
+
+PARAMETER num_ctx 4096
+PARAMETER temperature 0
+PARAMETER top_k 1
+PARAMETER repeat_penalty 1.0
+
+SYSTEM """You are a professional English to German translator working on
+technical documentation.
+
+Rules:
+- Output ONLY the German translation. No quotes, no commentary, no explanation.
+- The input is a fragment of a larger document. Do not add or remove sentences.
+- Markers like ⟦0⟧ are placeholders. Reproduce each exactly once, unchanged.
+- Keep a fragment as short as the original. Table cells and headings are
+  labels, not sentences.
+- Leave identifiers, flags, file paths and command names untouched.
+- Keep Markdown emphasis where it is."""
