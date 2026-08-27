@@ -4,6 +4,12 @@
 
 # Markdown Splitter
 
+[![CI](https://github.com/mlechner911/mdsplit/actions/workflows/ci.yml/badge.svg)](https://github.com/mlechner911/mdsplit/actions/workflows/ci.yml)
+[![Go](https://img.shields.io/badge/go-1.25%2B-00ADD8?logo=go&logoColor=white)](go.mod)
+[![Release](https://img.shields.io/github/v/tag/mlechner911/mdsplit?label=release&color=blue)](https://github.com/mlechner911/mdsplit/releases)
+[![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
+[![MCP](https://img.shields.io/badge/MCP-9%20tools-8957e5)](#mcp-mode-default)
+
 <sub>Machine-translated by this tool: [Deutsch](README.de.md) · [Español](README.es.md) · [Français](README.fr.md) · [中文](README.zh.md) — each carries its provenance in the front matter.</sub>
 
 Splits Markdown documents into size-bounded chunks that stay safe for LLM translation or processing. Atomic blocks (code fences, tables, lists, multi-line HTML) are never split across chunk boundaries — only whole blocks move between chunks.

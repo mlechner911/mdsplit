@@ -1,16 +1,16 @@
 ---
 translation:
   tool: mdsplit
-  version: 1.4.0
+  version: 1.5.0
   url: "https://github.com/mlechner911/mdsplit"
   source: README.md
-  source_sha256: 5dfef16a27b78a9b
-  source_chars: 28835
+  source_sha256: 04c5e5b962e49303
+  source_chars: 29365
   target_lang: fr
   model: "qwen3.5:35b"
   mode: block
   parts: 18/18
-  translated: "2026-08-27T19:36:44Z"
+  translated: "2026-08-27T20:11:43Z"
   machine_translation: true
 ---
 
@@ -19,6 +19,12 @@ translation:
 <sub>Illustration créée avec Nano Banana 2</sub>
 
 # Découpeur Markdown
+
+[![CI](https://github.com/mlechner911/mdsplit/actions/workflows/ci.yml/badge.svg)](https://github.com/mlechner911/mdsplit/actions/workflows/ci.yml)
+[![Go](https://img.shields.io/badge/go-1.25%2B-00ADD8?logo=go&logoColor=white)](go.mod)
+[![Release](https://img.shields.io/github/v/tag/mlechner911/mdsplit?label=release&color=blue)](https://github.com/mlechner911/mdsplit/releases)
+[![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
+[![MCP](https://img.shields.io/badge/MCP-9%20tools-8957e5)](#mcp-mode-default)
 
 <sub>Traduit par machine par cet outil : [Deutsch](README.de.md) · [Español](README.es.md) · [Français](README.fr.md) · [中文](README.zh.md) — chacune porte sa provenance dans la matière de front.</sub>
 
