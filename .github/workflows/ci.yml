@@ -77,10 +77,10 @@ jobs:
       - name: build
         run: go build -ldflags "-X main.version=$(cat VERSION)" -o bin/mcp-md-splitter ./cmd/mcp-md-splitter
 
-      - name: split and merge test.md
+      - name: split and merge testdata/sample.md
         run: |
-          ./bin/mcp-md-splitter -cli -file test.md -size 2000
-          ./bin/mcp-md-splitter -merge -dir chunks/ | tee merge.log
+          ./bin/mcp-md-splitter -cli -file testdata/sample.md -size 2000
+          ./bin/mcp-md-splitter -merge -dir testdata/chunks/ | tee merge.log
           grep -q "round-trip: byte-identical to the source" merge.log
 
       - name: round-trip every Markdown file in the repo

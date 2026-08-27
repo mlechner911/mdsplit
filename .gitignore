@@ -15,7 +15,7 @@ chunks/
 .claude/
 
 # Übersetzungsausgaben aus task/CLI-Läufen
-/test.*.md
+/testdata/sample.*.md
 *.out.md
 chunks/glossary.json
 

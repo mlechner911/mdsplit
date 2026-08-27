@@ -88,7 +88,7 @@ task build     # -> bin/mcp-md-splitter
 task test      # go test -v ./...
 task vet
 task check     # vet + test + build (CI-style)
-task roundtrip # Split von test.md + Merge zurück + Roundtrip-Check
+task roundtrip # split the fixture, merge it back, fail unless byte-identical
 task install   # go install -> ~/go/bin (global `mcp-md-splitter`)
 task clean     # removes bin/ and chunks/
 
@@ -507,7 +507,7 @@ Standard Go `cmd`/`internal` layout:
 │   └── *_test.go                 # unit tests + byte-exact round-trip corpus
 ├── Taskfile.yaml                 # task build/test/vet/check/roundtrip/install/clean
 ├── VERSION                       # 1.3.0
-└── test.md                       # fixture for the full-split test
+└── testdata/sample.md            # a real README, used as a fixture
 ```
 
 Pipeline: `ExtractBlocks(content) []Block` parses Markdown into atomic blocks —

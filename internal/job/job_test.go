@@ -191,20 +191,20 @@ func TestLoadByID(t *testing.T) {
 }
 
 // TestArtifacts_RoundTrip prüft die echten Artefakte im Projekt: die Chunks
-// aus chunks/ müssen zusammen wieder test.md ergeben. Deckt damit ab, dass
-// CLI-Schreibweise und Manifest-Leser zueinander passen.
+// aus testdata/chunks/ müssen zusammen wieder die Fixture ergeben. Deckt damit
+// ab, dass CLI-Schreibweise und Manifest-Leser zueinander passen.
 func TestArtifacts_RoundTrip(t *testing.T) {
 	root := "../.."
-	orig, err := os.ReadFile(filepath.Join(root, "test.md"))
+	orig, err := os.ReadFile(filepath.Join(root, "testdata", "sample.md"))
 	if err != nil {
-		t.Skip("test.md nicht vorhanden; laufe nur in Projektroot")
+		t.Skip("testdata/sample.md nicht vorhanden; laufe nur in Projektroot")
 	}
-	m, err := Load(filepath.Join(root, "chunks"))
+	m, err := Load(filepath.Join(root, "testdata", "chunks"))
 	if err != nil {
-		t.Skip("chunks/ fehlt - erst `task roundtrip` ausführen")
+		t.Skip("testdata/chunks/ fehlt - erst `task roundtrip` ausführen")
 	}
-	if !strings.Contains(filepath.Base(m.SourceFile), "test.md") {
-		t.Skipf("Manifest verweist auf %s statt test.md", m.SourceFile)
+	if filepath.Base(m.SourceFile) != "sample.md" {
+		t.Skipf("Manifest verweist auf %s statt auf die Fixture", m.SourceFile)
 	}
 	// Bewusst die Originale, nicht MergePaths: bearbeitete Teile wären
 	// Übersetzungen und dürften vom Original abweichen.

@@ -25,8 +25,8 @@ endpoint is configured — `translate_chunk` and `build_glossary`.
 task check      # vet + test + build. Run this before claiming anything works.
 task build      # -> bin/mcp-md-splitter (ldflags injects VERSION into main.version)
 task test       # go test -v -count=1 ./...  — hermetic: no network, no containers
-task roundtrip  # split test.md, merge it back, fail unless byte-identical
-task smoke      # CLI smoke test on the test.md fixture
+task roundtrip  # split testdata/sample.md, merge it back, fail unless byte-identical
+task smoke      # CLI smoke test on the testdata/sample.md fixture
 task install    # go install -> $GOBIN, so `mcp-md-splitter` is on PATH for MCP clients
 
 task i18n           # translate README.md into every language in LANGS
@@ -34,8 +34,7 @@ task i18n:glossary  # build glossary.json for languages that have none
 task i18n:check     # per language: is the translation still current?
 ```
 
-The `i18n` tasks need `MDSPLIT_LLM_URL` and `MDSPLIT_LLM_MODEL`. `test.md` is a
-fixture. `bin/`, `chunks/`, `i18n/*/*-part-*.md` and merge output are generated
+The `i18n` tasks need `MDSPLIT_LLM_URL` and `MDSPLIT_LLM_MODEL`. `testdata/sample.md` is a fixture. `bin/`, `chunks/`, `i18n/*/*-part-*.md` and merge output are generated
 and gitignored; `i18n/*/glossary.json` is **not**, because it holds reviewed
 decisions.
 

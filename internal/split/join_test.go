@@ -119,9 +119,9 @@ func TestRoundtrip_Cases(t *testing.T) {
 }
 
 func TestRoundtrip_testMd(t *testing.T) {
-	data, err := os.ReadFile("../../test.md")
+	data, err := os.ReadFile("../../testdata/sample.md")
 	if err != nil {
-		t.Skip("test.md nicht vorhanden; laufe nur in Projektroot")
+		t.Skip("testdata/sample.md nicht vorhanden; laufe nur in Projektroot")
 	}
 	for _, size := range []int{500, 2000, 4000} {
 		assertExactRoundtrip(t, string(data), SplitDoc(string(data), size))
@@ -132,6 +132,8 @@ func TestRoundtrip_testMd(t *testing.T) {
 // Projekts - der billigste echte Korpus, den wir hermetisch haben.
 func TestRoundtrip_ProjectDocs(t *testing.T) {
 	matches, _ := filepath.Glob("../../*.md")
+	fixtures, _ := filepath.Glob("../../testdata/*.md")
+	matches = append(matches, fixtures...)
 	if len(matches) == 0 {
 		t.Skip("keine Projekt-Markdown gefunden")
 	}
