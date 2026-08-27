@@ -18,6 +18,7 @@ func main() {
 	chunkSize := flag.Int("size", 8000, "soft character budget per chunk; indivisible blocks may exceed it")
 	mergeMode := flag.Bool("merge", false, "reassemble a split back into one document")
 	chunksDir := flag.String("dir", "", "chunk directory containing index.json (merge mode)")
+	outDir := flag.String("out-dir", "", "where to write the chunks (default: chunks/ next to the source); needed when one document is split for several languages")
 	outFile := flag.String("out", "", "merge output path (default: <source>.merged)")
 	target := flag.String("target", "", "suffix for edited parts, e.g. de (default: out)")
 	language := flag.String("lang", "", "target language for -translate, e.g. de, es, fr, zh")
@@ -61,7 +62,7 @@ func main() {
 	case *mergeMode:
 		runMergeMode(*chunksDir, *outFile, *stamp)
 	case *cliMode:
-		runCLIMode(*filePath, *chunkSize, *target)
+		runCLIMode(*filePath, *chunkSize, *target, *outDir)
 	default:
 		runMCPMode(cfg)
 	}

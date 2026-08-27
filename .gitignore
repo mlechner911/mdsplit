@@ -18,3 +18,8 @@ chunks/
 /test.*.md
 *.out.md
 chunks/glossary.json
+
+# Übersetzungs-Arbeitsverzeichnisse: die Chunks sind Zwischenstand,
+# das kuratierte glossary.json gehört ins Repo.
+i18n/*/*-part-*.md
+i18n/*/index.json

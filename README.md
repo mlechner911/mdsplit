@@ -329,11 +329,23 @@ translate the following English text into German:
 '
 ```
 
-The template is a Go template with `.System`, `.User`, `.SourceLang` and
-`.TargetLang`; `MDSPLIT_LLM_STOP` sets the stop sequences (default
-`<end_of_turn>`). Block mode is the right companion here — a model that takes a
-language pair and nothing else has no channel for a rule like "leave the code
-alone", so the structure has to be guaranteed rather than requested.
+The template is a Go template with `.System`, `.User`, `.SourceLang`,
+`.TargetLang`, `.SourceLangName` and `.TargetLangName`, so one configuration
+covers every language pair; `-llm-template translategemma` is a shorthand for
+the one above, and `MDSPLIT_LLM_STOP` sets the stop sequences (default
+`<end_of_turn>`).
+
+Block mode is the right companion here — a model that takes a language pair and
+nothing else has no channel for a rule like "leave the code alone", so the
+structure has to be guaranteed rather than requested.
+
+**A model with no instruction channel cannot use a glossary either.** That is
+the trade to weigh: a translation-specialised model usually translates a
+sentence better, but it cannot be told that *Fence* is to be rendered one
+particular way throughout a manual. Over a long document, consistent
+terminology tends to matter more than any single sentence, so an
+instruction-following general model with a reviewed glossary will often beat a
+better translator working blind.
 
 ### Provenance and staleness
 

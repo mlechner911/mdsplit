@@ -10,7 +10,7 @@ import (
 )
 
 // runCLIMode exportiert Chunks + Manifest neben der Quelldatei.
-func runCLIMode(path string, size int, target string) {
+func runCLIMode(path string, size int, target, outDir string) {
 	if path == "" {
 		fmt.Println("error: pass a file path with -file")
 		os.Exit(1)
@@ -32,7 +32,13 @@ func runCLIMode(path string, size int, target string) {
 		os.Exit(1)
 	}
 
-	outputDir := filepath.Join(filepath.Dir(path), "chunks")
+	outputDir := outDir
+	if outputDir == "" {
+		outputDir = filepath.Join(filepath.Dir(path), "chunks")
+	}
+	if abs, err := filepath.Abs(outputDir); err == nil {
+		outputDir = abs
+	}
 	m := job.New(path, size, target, doc)
 	if err := m.Write(outputDir, doc.Chunks); err != nil {
 		fmt.Printf("error: %v\n", err)
