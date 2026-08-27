@@ -36,14 +36,19 @@ type Part struct {
 // Manifest ist der Auftrag: Quelle, Chunk-Liste und die Leerzeilen-Abstände,
 // die den byte-genauen Rückweg möglich machen.
 type Manifest struct {
-	ID         string   `json:"id"`
-	SourceFile string   `json:"source_file"`
-	TotalParts int      `json:"total_parts"`
-	Size       int      `json:"size"`
-	Target     string   `json:"target,omitempty"`
-	Gaps       []int    `json:"gaps"`
-	Parts      []Part   `json:"parts"`
-	Chunks     []string `json:"chunks"` // Dateinamen, für ältere Leser
+	ID         string `json:"id"`
+	SourceFile string `json:"source_file"`
+	TotalParts int    `json:"total_parts"`
+	Size       int    `json:"size"`
+	Target     string `json:"target,omitempty"`
+	Language   string `json:"language,omitempty"`
+	// Glossary pins terminology across parts. Because each part is translated
+	// in isolation, nothing else stops the model from rendering the same term
+	// two ways in two chunks.
+	Glossary map[string]string `json:"glossary,omitempty"`
+	Gaps     []int             `json:"gaps"`
+	Parts    []Part            `json:"parts"`
+	Chunks   []string          `json:"chunks"` // Dateinamen, für ältere Leser
 
 	dir string // Laufzeit: Ordner, aus dem geladen wurde
 }
