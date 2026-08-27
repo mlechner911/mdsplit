@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/mlechner911/mdsplit/internal/job"
 	"github.com/mlechner911/mdsplit/internal/llm"
@@ -253,8 +254,12 @@ func jobStatusHandler(_ context.Context, req mcp.CallToolRequest) (*mcp.CallTool
 	}
 	done, missing := m.Progress()
 	b := &strings.Builder{}
-	fmt.Fprintf(b, "Job %s - %s\ndirectory: %s\nprogress: %d/%d edited\n\n",
+	fmt.Fprintf(b, "Job %s - %s\ndirectory: %s\nprogress: %d/%d edited\n",
 		m.ID, filepath.Base(m.SourceFile), m.Dir(), done, m.TotalParts)
+	if changed, known := m.SourceChanged(); known && changed {
+		b.WriteString("source: CHANGED since this split was made - re-split before trusting these parts\n")
+	}
+	b.WriteString("\n")
 	for _, p := range m.Parts {
 		mark := "·"
 		if tp, err := m.TargetPath(p.Part); err == nil {
@@ -287,6 +292,8 @@ func mergeTool() mcp.Tool {
 			mcp.Description("alternative to jobId: the chunk directory containing index.json")),
 		mcp.WithString("out",
 			mcp.Description("output path (default: <source>.<target>.md, or <source>.merged)")),
+		mcp.WithBoolean("stamp",
+			mcp.Description("write provenance (tool, version, source hash, model, date) into the document's YAML front matter; merges into an existing block rather than prepending a second one")),
 	)
 }
 
@@ -308,6 +315,15 @@ func mergeHandler(_ context.Context, req mcp.CallToolRequest) (*mcp.CallToolResu
 	if out == "" {
 		out = defaultMergeTarget(m)
 	}
+	verdict := ""
+	if translated == 0 {
+		if data, err := os.ReadFile(m.SourceFile); err == nil {
+			verdict = roundtripVerdict(merged, string(data))
+		}
+	}
+	if stamp, _ := args(req)["stamp"].(bool); stamp {
+		merged = job.Stamp(merged, m.Provenance.YAML(m.PartsSummary()))
+	}
 	if err := os.WriteFile(out, []byte(merged), 0o644); err != nil {
 		return mcp.NewToolResultError(fmt.Sprintf("cannot write %s: %v", out, err)), nil
 	}
@@ -320,10 +336,8 @@ func mergeHandler(_ context.Context, req mcp.CallToolRequest) (*mcp.CallToolResu
 			b.WriteString("; the rest came unchanged from the original")
 		}
 		b.WriteString("\n")
-	} else if m.SourceFile != "" {
-		if data, err := os.ReadFile(m.SourceFile); err == nil {
-			b.WriteString(roundtripVerdict(merged, string(data)) + "\n")
-		}
+	} else if verdict != "" {
+		b.WriteString(verdict + "\n")
 	}
 	return mcp.NewToolResultText(b.String()), nil
 }
@@ -420,6 +434,10 @@ func translateChunkHandler(ctx context.Context, req mcp.CallToolRequest) (*mcp.C
 			return mcp.NewToolResultError(b.String()), nil
 		}
 		return mcp.NewToolResultError(err.Error()), nil
+	}
+
+	if err := m.RecordRun(lang, llmCfg.Model, string(res.Mode), time.Now().UTC().Format(time.RFC3339)); err != nil {
+		fmt.Fprintf(os.Stderr, "warning: could not record provenance: %v\n", err)
 	}
 
 	done, missing := m.Progress()

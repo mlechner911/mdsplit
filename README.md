@@ -282,6 +282,57 @@ The template is a Go template with `.System`, `.User`, `.SourceLang` and
 language pair and nothing else has no channel for a rule like "leave the code
 alone", so the structure has to be guaranteed rather than requested.
 
+### Provenance and staleness
+
+Every split records where it came from, in `index.json`, whether or not it is
+ever translated:
+
+```json
+"provenance": {
+  "tool": "mdsplit",
+  "version": "1.3.0",
+  "url": "https://github.com/mlechner911/mdsplit",
+  "source": "doc.md",
+  "source_sha256": "4efd5dc5da924339",
+  "source_chars": 10236,
+  "target_lang": "de",
+  "model": "translategemma-4b-it",
+  "mode": "block",
+  "translated": "2026-08-27T14:23:11Z",
+  "machine_translation": true
+}
+```
+
+`source_sha256` is the field that earns its keep. Size and date are
+informative; the hash lets a later run answer the question that actually
+matters for maintained documentation:
+
+```bash
+mcp-md-splitter -check -dir chunks/
+# source: CHANGED since the split - re-split and retranslate   (exit 1)
+```
+
+A translation that has silently gone stale is worse than one that is obviously
+missing, and nothing else in the pipeline would notice.
+
+`-merge -stamp` additionally writes the record into the document's own YAML
+front matter, for when a *person* should see it — not least
+`machine_translation: true`, since a machine translation otherwise looks
+exactly like something someone wrote and reviewed.
+
+It never simply prepends. A document that already has front matter would be
+destroyed by a second `---` block, because the original one stops being
+metadata and becomes content; an existing block is edited in place instead, and
+stamping twice replaces the record rather than duplicating it. The endpoint URL
+is deliberately not recorded: a model name is provenance, an internal address
+is a leak.
+
+Two consequences worth knowing. The round-trip check runs against the
+*unstamped* text, otherwise it would report "differs" forever after the first
+stamp. And the timestamp makes merging non-idempotent, so a document rebuilt on
+a schedule shows a diff every run even when nothing changed — which is why the
+stamp is opt-in and the hash, not the date, is the load-bearing field.
+
 ### What is checked before anything is stored
 
 - Every sentinel must come back exactly once. Instructing a model to preserve

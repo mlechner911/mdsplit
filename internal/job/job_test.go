@@ -224,3 +224,93 @@ func TestArtifacts_RoundTrip(t *testing.T) {
 		t.Fatalf("Artefakt-Roundtrip verletzt: WANT %d / GOT %d Zeichen", len(want), len(merged))
 	}
 }
+
+// TestProvenance_RecordedOnSplit: die Herkunft wird immer festgehalten, auch
+// ohne Übersetzung - sie kostet nichts und fehlt sonst genau dann, wenn man
+// sie braucht.
+func TestProvenance_RecordedOnSplit(t *testing.T) {
+	m, _, _ := newJob(t, doc, 60, "de")
+	got, err := Load(m.Dir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	p := got.Provenance
+	if p.Tool == "" || p.URL == "" {
+		t.Errorf("Tool-Identität fehlt: %+v", p)
+	}
+	if p.SourceSHA == "" || p.SourceChars != len(doc) {
+		t.Errorf("Quell-Hash oder -Größe fehlen: %+v", p)
+	}
+	if p.Machine {
+		t.Error("machine_translation gesetzt, obwohl nichts übersetzt wurde")
+	}
+}
+
+// TestSourceChanged ist der Grund, warum der Hash überhaupt gespeichert wird:
+// eine still veraltete Übersetzung ist schlimmer als eine offensichtlich
+// fehlende.
+func TestSourceChanged(t *testing.T) {
+	m, srcPath, _ := newJob(t, doc, 60, "de")
+
+	changed, known := m.SourceChanged()
+	if !known {
+		t.Fatal("Hash wurde nicht gespeichert")
+	}
+	if changed {
+		t.Error("unveränderte Quelle gilt als geändert")
+	}
+
+	if err := os.WriteFile(srcPath, []byte(doc+"\nEin neuer Satz.\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if changed, _ := m.SourceChanged(); !changed {
+		t.Error("geänderte Quelle wurde nicht erkannt")
+	}
+
+	// Ein Manifest ohne Hash darf nicht raten.
+	m.Provenance.SourceSHA = ""
+	if _, known := m.SourceChanged(); known {
+		t.Error("Manifest ohne Hash behauptet, Bescheid zu wissen")
+	}
+}
+
+func TestRecordRun_PersistsAndMarksMachine(t *testing.T) {
+	m, _, _ := newJob(t, doc, 60, "de")
+	if err := m.RecordRun("de", "some-model", "block", "2026-08-27T14:23:11Z"); err != nil {
+		t.Fatalf("RecordRun: %v", err)
+	}
+	got, err := Load(m.Dir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	p := got.Provenance
+	if p.Model != "some-model" || p.Mode != "block" || p.TargetLang != "de" {
+		t.Errorf("Lauf nicht festgehalten: %+v", p)
+	}
+	if !p.Machine {
+		t.Error("machine_translation nicht gesetzt - genau das soll ehrlich dabeistehen")
+	}
+	// Der Hash der Quelle darf ein Lauf nicht überschreiben.
+	if p.SourceSHA == "" {
+		t.Error("Quell-Hash beim Aufzeichnen verloren")
+	}
+}
+
+// TestProvenance_NoEndpointLeak: die URL des Endpoints hat in einem Dokument
+// nichts zu suchen, das später öffentlich werden kann.
+func TestProvenance_NoEndpointLeak(t *testing.T) {
+	m, _, _ := newJob(t, doc, 60, "de")
+	if err := m.RecordRun("de", "some-model", "block", "2026-08-27T14:23:11Z"); err != nil {
+		t.Fatal(err)
+	}
+	raw, err := os.ReadFile(filepath.Join(m.Dir(), IndexName))
+	if err != nil {
+		t.Fatal(err)
+	}
+	y := m.Provenance.YAML(m.PartsSummary())
+	for _, forbidden := range []string{"11434", "192.168", "Bearer", "localhost:"} {
+		if strings.Contains(string(raw), forbidden) || strings.Contains(y, forbidden) {
+			t.Errorf("Endpoint-Detail %q ist in die Provenienz gelangt", forbidden)
+		}
+	}
+}

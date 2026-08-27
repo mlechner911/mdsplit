@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"time"
 
 	"github.com/mlechner911/mdsplit/internal/job"
 	"github.com/mlechner911/mdsplit/internal/llm"
@@ -96,6 +97,10 @@ func runTranslateMode(dir string, cfg llm.Config, language, mode string) {
 			}
 			fmt.Printf("  FAIL part %2d/%d  %v\n", n, m.TotalParts, err)
 		}
+	}
+
+	if err := m.RecordRun(language, cfg.Model, string(opts.Mode), time.Now().UTC().Format(time.RFC3339)); err != nil {
+		fmt.Printf("warning: could not record provenance: %v\n", err)
 	}
 
 	done, still := m.Progress()

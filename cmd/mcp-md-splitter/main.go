@@ -4,12 +4,15 @@ import (
 	"flag"
 
 	"github.com/mlechner911/mdsplit/internal/llm"
+	"github.com/mlechner911/mdsplit/internal/meta"
 )
 
 // version ist die Server-Version für MCP-Clients; wird bei Bedarf via ldflags gesetzt.
 var version = "1.1.0"
 
 func main() {
+	meta.Version = version
+
 	cliMode := flag.Bool("cli", false, "run the standalone CLI export instead of the MCP server")
 	filePath := flag.String("file", "", "path to the Markdown file (CLI mode)")
 	chunkSize := flag.Int("size", 8000, "soft character budget per chunk; indivisible blocks may exceed it")
@@ -19,6 +22,8 @@ func main() {
 	target := flag.String("target", "", "suffix for edited parts, e.g. de (default: out)")
 	language := flag.String("lang", "", "target language for -translate, e.g. de or German")
 	translateMode := flag.Bool("translate", false, "translate every open part of a split via the configured LLM")
+	stamp := flag.Bool("stamp", false, "write provenance (tool, version, source hash, model) into the merged document's YAML front matter")
+	checkMode := flag.Bool("check", false, "report whether a split is still current: progress, and whether the source changed since it was made")
 	mode := flag.String("mode", "block", "translation granularity: block (code never sent, structure guaranteed) or chunk (whole chunk, needs an instruction-following model)")
 
 	// Endpoint settings are process configuration, never tool arguments: a
@@ -46,8 +51,10 @@ func main() {
 	switch {
 	case *translateMode:
 		runTranslateMode(*chunksDir, cfg, *language, *mode)
+	case *checkMode:
+		runCheckMode(*chunksDir)
 	case *mergeMode:
-		runMergeMode(*chunksDir, *outFile)
+		runMergeMode(*chunksDir, *outFile, *stamp)
 	case *cliMode:
 		runCLIMode(*filePath, *chunkSize, *target)
 	default:

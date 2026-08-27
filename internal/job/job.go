@@ -15,6 +15,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/mlechner911/mdsplit/internal/meta"
 	"github.com/mlechner911/mdsplit/internal/split"
 )
 
@@ -24,6 +25,29 @@ const IndexName = "index.json"
 // DefaultTarget ist die Endung für zurückgeschriebene Teile, wenn beim Split
 // keine Zielsprache angegeben wurde.
 const DefaultTarget = "out"
+
+// Provenance records how a document was produced. It is written to the
+// manifest on every run - it costs nothing and is there when someone asks
+// where a translation came from - and can optionally be stamped into the
+// merged document itself.
+//
+// SourceSHA256 is the field that earns its keep: with it, a later run can tell
+// that the source has changed since the translation was made. Size and date are
+// informative; the hash is what does work.
+type Provenance struct {
+	Tool        string `json:"tool"`
+	Version     string `json:"version"`
+	URL         string `json:"url"`
+	Source      string `json:"source"`
+	SourceSHA   string `json:"source_sha256"`
+	SourceChars int    `json:"source_chars"`
+	// The rest is filled in once a part has actually been translated.
+	TargetLang string `json:"target_lang,omitempty"`
+	Model      string `json:"model,omitempty"`
+	Mode       string `json:"mode,omitempty"`
+	Translated string `json:"translated,omitempty"` // RFC3339
+	Machine    bool   `json:"machine_translation,omitempty"`
+}
 
 // Part beschreibt einen Chunk im Manifest.
 type Part struct {
@@ -47,10 +71,38 @@ type Manifest struct {
 	// two ways in two chunks.
 	Glossary map[string]string `json:"glossary,omitempty"`
 	Gaps     []int             `json:"gaps"`
-	Parts    []Part            `json:"parts"`
-	Chunks   []string          `json:"chunks"` // Dateinamen, für ältere Leser
+	// Provenance records what produced this split and, once translated, what
+	// produced the translation.
+	Provenance Provenance `json:"provenance"`
+	Parts      []Part     `json:"parts"`
+	Chunks     []string   `json:"chunks"` // Dateinamen, für ältere Leser
 
 	dir string // Laufzeit: Ordner, aus dem geladen wurde
+}
+
+// HashSource returns the SHA-256 of a file, shortened to 16 hex characters -
+// enough to notice a change, short enough to read in a manifest.
+func HashSource(path string) (string, int, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return "", 0, fmt.Errorf("read source: %w", err)
+	}
+	sum := sha256.Sum256(data)
+	return hex.EncodeToString(sum[:])[:16], len(data), nil
+}
+
+// SourceChanged reports whether the source file differs from the one this
+// manifest was built from. A missing hash means the manifest predates
+// provenance, so nothing can be said.
+func (m *Manifest) SourceChanged() (changed bool, known bool) {
+	if m.Provenance.SourceSHA == "" {
+		return false, false
+	}
+	sum, _, err := HashSource(m.SourceFile)
+	if err != nil {
+		return false, false
+	}
+	return sum != m.Provenance.SourceSHA, true
 }
 
 // ID leitet eine stabile Auftrags-ID aus Quellpfad und Zielgröße ab. Derselbe
@@ -79,6 +131,15 @@ func New(source string, size int, target string, doc split.Doc) *Manifest {
 		Size:       size,
 		Target:     target,
 		Gaps:       doc.Gaps,
+		Provenance: Provenance{
+			Tool:    meta.Name,
+			Version: meta.Version,
+			URL:     meta.URL,
+			Source:  filepath.Base(source),
+		},
+	}
+	if sum, n, err := HashSource(source); err == nil {
+		m.Provenance.SourceSHA, m.Provenance.SourceChars = sum, n
 	}
 	for i, c := range doc.Chunks {
 		name := fmt.Sprintf("%s-part-%02d%s", base, i+1, ext)
@@ -210,6 +271,35 @@ func (m *Manifest) WriteChunk(n int, text string) error {
 		return err
 	}
 	return os.WriteFile(tp, []byte(text), 0o644)
+}
+
+// RecordRun stores what produced the current translations and saves the
+// manifest. Called after a translating run so the provenance reflects it.
+func (m *Manifest) RecordRun(lang, model, mode, when string) error {
+	m.Provenance.TargetLang = lang
+	m.Provenance.Model = model
+	m.Provenance.Mode = mode
+	m.Provenance.Translated = when
+	m.Provenance.Machine = true
+	return m.save()
+}
+
+// save rewrites the manifest in place.
+func (m *Manifest) save() error {
+	if m.dir == "" {
+		return fmt.Errorf("manifest has no directory")
+	}
+	data, err := json.MarshalIndent(m, "", "  ")
+	if err != nil {
+		return fmt.Errorf("encode manifest: %w", err)
+	}
+	return os.WriteFile(filepath.Join(m.dir, IndexName), data, 0o644)
+}
+
+// PartsSummary renders "7/11" for a stamp.
+func (m *Manifest) PartsSummary() string {
+	done, _ := m.Progress()
+	return fmt.Sprintf("%d/%d", done, m.TotalParts)
 }
 
 // Progress zählt, wie viele Teile bereits zurückgeschrieben wurden.
