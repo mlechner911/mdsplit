@@ -17,4 +17,4 @@ chunks/
 # Übersetzungsausgaben aus task/CLI-Läufen
 /test.*.md
 *.out.md
-glossary.json
+chunks/glossary.json

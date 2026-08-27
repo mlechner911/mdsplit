@@ -1,0 +1,106 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 850 260" width="850" height="260">
+  <style>
+    .text-title { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif; font-size: 14px; font-weight: 600; fill: #adbac7; }
+    .text-body { font-family: ui-monospace, SFMono-Regular, SF Mono, Menlo, Consolas, Liberation Mono, monospace; font-size: 11px; fill: #768390; }
+    .text-accent { font-family: ui-monospace, SFMono-Regular, SF Mono, Menlo, Consolas, Liberation Mono, monospace; font-size: 12px; font-weight: bold; fill: #539bf5; }
+    
+    /* Box Styles with GitHub Dark/Light Adaptive Colors */
+    .box-bg { fill: #22272e; stroke: #444c56; stroke-width: 1.5; rx: 6px; }
+    .box-highlight { fill: #1e2c3f; stroke: #316dca; stroke-width: 1.5; rx: 6px; }
+    .box-llm { fill: #2d2236; stroke: #8957e5; stroke-width: 1.5; rx: 6px; }
+    
+    .arrow { stroke: #444c56; stroke-width: 2; fill: none; stroke-dasharray: 4 4; }
+    .arrow-active { stroke: #316dca; stroke-width: 2; fill: none; }
+    .marker { fill: #444c56; }
+    .marker-active { fill: #316dca; }
+
+    /* GitHub Adaptive Dark/Light Mode Override */
+    @media (prefers-color-scheme: light) {
+      .box-bg { fill: #f6f8fa; stroke: #d0d7de; }
+      .box-highlight { fill: #ddf4ff; stroke: #0969da; }
+      .box-llm { fill: #fbefff; stroke: #8250df; }
+      .text-title { fill: #24292f; }
+      .text-body { fill: #57606a; }
+      .text-accent { fill: #0969da; }
+      .arrow { stroke: #d0d7de; }
+      .arrow-active { stroke: #0969da; }
+      .marker { fill: #d0d7de; }
+      .marker-active { fill: #0969da; }
+    }
+  </style>
+
+  <defs>
+    <marker id="arrowhead" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto">
+      <polygon points="0 0, 6 3, 0 6" class="marker" />
+    </marker>
+    <marker id="arrowhead-active" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto">
+      <polygon points="0 0, 6 3, 0 6" class="marker-active" />
+    </marker>
+  </defs>
+
+  <!-- STEP 1: Source Document -->
+  <g transform="translate(20, 30)">
+    <rect class="box-bg" width="180" height="190" />
+    <text class="text-title" x="15" y="30">1. Source Document</text>
+    <text class="text-body" x="15" y="65"># Handbook.md</text>
+    <text class="text-body" x="15" y="90">Huge technical file</text>
+    <text class="text-body" x="15" y="115">with atomic blocks:</text>
+    <text class="text-body" x="25" y="140">⁃ Code Fences (```)</text>
+    <text class="text-body" x="25" y="160">⁃ GFM Tables</text>
+    <text class="text-body" x="25" y="180">⁃ HTML Elements</text>
+  </g>
+
+  <!-- Arrow 1 to 2 -->
+  <path class="arrow-active" d="M 200 125 L 240 125" marker-end="url(#arrowhead-active)" />
+
+  <!-- STEP 2: mdsplit core -->
+  <g transform="translate(250, 30)">
+    <rect class="box-highlight" width="190" height="190" />
+    <text class="text-title" x="15" y="30" style="fill: #539bf5;">2. mcp-md-splitter</text>
+    <text class="text-body" x="15" y="65" style="font-weight: bold;">Size-Bounded Cutting</text>
+    <text class="text-body" x="15" y="95">ExtractBlocks() parses</text>
+    <text class="text-body" x="15" y="115">without breaking code.</text>
+    <text class="text-accent" x="15" y="150">Returns Manifest</text>
+    <text class="text-body" x="15" y="175">No text sent to Client!</text>
+  </g>
+
+  <!-- Split Arrows to Chunks -->
+  <path class="arrow" d="M 440 100 L 480 70" marker-end="url(#arrowhead)" />
+  <path class="arrow-active" d="M 440 125 L 485 125" marker-end="url(#arrowhead-active)" />
+  <path class="arrow" d="M 440 150 L 480 180" marker-end="url(#arrowhead)" />
+
+  <!-- STEP 3: Chunk Pipeline -->
+  <g transform="translate(495, 20)">
+    <!-- Chunk 1 -->
+    <g transform="translate(0, 0)">
+      <rect class="box-bg" width="130" height="45" />
+      <text class="text-body" x="12" y="26">part-01.md (Prose)</text>
+    </g>
+    <!-- Active Chunk 2 -->
+    <g transform="translate(5, 65)">
+      <rect class="box-highlight" width="135" height="60" />
+      <text class="text-accent" x="12" y="25">get_chunk(part-02)</text>
+      <text class="text-body" x="12" y="45">+ Static Glossary</text>
+    </g>
+    <!-- Chunk 3 -->
+    <g transform="translate(0, 150)">
+      <rect class="box-bg" width="130" height="45" />
+      <text class="text-body" x="12" y="26">part-03.md (Table)</text>
+    </g>
+  </g>
+
+  <!-- Arrow from Active Chunk to LLM -->
+  <path class="arrow-active" d="M 635 125 L 675 125" marker-end="url(#arrowhead-active)" />
+
+  <!-- STEP 4: Isolated Local LLM -->
+  <g transform="translate(685, 55)">
+    <rect class="box-llm" width="145" height="140" />
+    <text class="text-title" x="15" y="30" style="fill: #bc8cff;">3. Local LLM</text>
+    <text class="text-body" x="15" y="60" style="fill: #bc8cff; font-weight: bold;">TranslateGemma</text>
+    <text class="text-body" x="15" y="85">Stateless Request</text>
+    <text class="text-accent" x="15" y="115" style="fill: #ff7b72;">0 B Chat History</text>
+    <text class="text-body" x="15" y="130" style="font-size: 9px;">Concludes in put_chunk</text>
+  </g>
+
+</svg>
+

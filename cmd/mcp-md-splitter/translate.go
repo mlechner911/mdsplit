@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"time"
 
+	"github.com/mlechner911/mdsplit/internal/glossary"
 	"github.com/mlechner911/mdsplit/internal/job"
 	"github.com/mlechner911/mdsplit/internal/llm"
 	"github.com/mlechner911/mdsplit/internal/split"
@@ -47,11 +48,17 @@ func runTranslateMode(dir string, cfg llm.Config, language, sourceLang, mode str
 		os.Exit(1)
 	}
 
+	gloss := m.Glossary
+	if f, err := glossary.Load(abs); err == nil && f != nil && len(f.Terms) > 0 {
+		gloss = f.Terms
+		fmt.Printf("glossary: %d terms pinned from %s\n", len(f.Terms), glossary.FileName)
+	}
+
 	client := llm.New(cfg)
 	opts := translate.Options{
 		Language:   language,
 		SourceLang: sourceLang,
-		Glossary:   m.Glossary,
+		Glossary:   gloss,
 		Mode:       translate.Mode(mode),
 	}
 	if opts.Mode != translate.ModeBlock && opts.Mode != translate.ModeChunk {

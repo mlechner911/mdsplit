@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/mlechner911/mdsplit/internal/glossary"
 	"github.com/mlechner911/mdsplit/internal/job"
 	"github.com/mlechner911/mdsplit/internal/llm"
 	"github.com/mlechner911/mdsplit/internal/split"
@@ -75,6 +76,7 @@ func runMCPMode(cfg llm.Config) {
 	s.AddTool(mergeTool(), mergeHandler)
 	if llmCfg.Ready() {
 		s.AddTool(translateChunkTool(), translateChunkHandler)
+		s.AddTool(buildGlossaryTool(), buildGlossaryHandler)
 	}
 
 	fmt.Fprintln(os.Stderr, "markdown-splitter MCP server ready ("+version+")")
@@ -458,5 +460,76 @@ func translateChunkHandler(ctx context.Context, req mcp.CallToolRequest) (*mcp.C
 	} else {
 		fmt.Fprintf(b, "All parts done - call merge_chunks(jobId=%q).\n", m.ID)
 	}
+	return mcp.NewToolResultText(b.String()), nil
+}
+
+// --- build_glossary -------------------------------------------------------
+
+func buildGlossaryTool() mcp.Tool {
+	return mcp.NewTool("build_glossary",
+		mcp.WithDescription(
+			"Propose the terminology of a document and write glossary.json next to the chunks, "+
+				"for a person to review before translating. Terms are found mechanically - words and "+
+				"phrases that recur across chunks, and that also appear inside code - then translated "+
+				"in a single request. "+
+				"Run this BEFORE translate_chunk: the glossary is frozen first on purpose. Building it "+
+				"while translating would leave the earliest parts done with an empty glossary and the "+
+				"last with a full one, and would make a single part impossible to redo on its own."),
+		mcp.WithString("jobId", mcp.Required(),
+			mcp.Description("job ID returned by split_markdown")),
+		mcp.WithString("language",
+			mcp.Description("target language, e.g. \"de\"; defaults to the language recorded at split time")),
+		mcp.WithNumber("terms",
+			mcp.Description("how many candidate terms to propose (default 40)")),
+	)
+}
+
+func buildGlossaryHandler(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	m, err := resolveJob(req)
+	if err != nil {
+		return mcp.NewToolResultError(err.Error()), nil
+	}
+	lang := argString(req, "language")
+	if lang == "" {
+		lang = m.Language
+	}
+	if lang == "" {
+		lang = m.Target
+	}
+	if lang == "" {
+		return mcp.NewToolResultError("no target language - pass language, or set it when splitting"), nil
+	}
+
+	source, err := os.ReadFile(m.SourceFile)
+	if err != nil {
+		return mcp.NewToolResultError(fmt.Sprintf("cannot read the source: %v", err)), nil
+	}
+	cands := glossary.Candidates(string(source), argInt(req, "terms", 40))
+	if len(cands) == 0 {
+		return mcp.NewToolResultText("No recurring terminology found - nothing to pin."), nil
+	}
+
+	name := translate.LanguageName(lang)
+	terms, err := glossary.Build(ctx, llm.New(llmCfg), name, cands)
+	if err != nil {
+		return mcp.NewToolResultError(err.Error()), nil
+	}
+	f := &glossary.File{
+		TargetLang: lang, Model: llmCfg.Model,
+		Generated: time.Now().UTC().Format(time.RFC3339),
+		Terms:     terms, Notes: glossary.Notes(cands),
+	}
+	if err := f.Save(m.Dir()); err != nil {
+		return mcp.NewToolResultError(err.Error()), nil
+	}
+
+	b := &strings.Builder{}
+	fmt.Fprintf(b, "%d of %d candidate terms decided for %s -> %s\n\n", len(terms), len(cands), name,
+		filepath.Join(m.Dir(), glossary.FileName))
+	for _, k := range glossary.Sorted(terms) {
+		fmt.Fprintf(b, "  %-24s %s\n", k, terms[k])
+	}
+	b.WriteString("\nAsk the user to review that file before translating: a glossary is a set of\n")
+	b.WriteString("decisions, and this is the cheapest point in the pipeline to correct one.\n")
 	return mcp.NewToolResultText(b.String()), nil
 }

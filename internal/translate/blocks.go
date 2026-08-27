@@ -239,8 +239,9 @@ Rules:
 	applied := 0
 	if len(opts.Glossary) > 0 {
 		var lines []string
+		lower := strings.ToLower(fragment)
 		for term, want := range opts.Glossary {
-			if strings.Contains(fragment, term) {
+			if strings.Contains(lower, strings.ToLower(term)) {
 				lines = append(lines, fmt.Sprintf("- %s = %s", term, want))
 			}
 		}

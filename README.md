@@ -4,10 +4,12 @@ Splits Markdown documents into size-bounded chunks that stay safe for LLM transl
 
 Implemented in Go with three runtime modes: split CLI, merge CLI (Round-trip), and an MCP (Model Context Protocol) server exposing a chunk-at-a-time job workflow.
 
+![The pipeline: a source document is cut into size-bounded chunks without breaking code fences, tables or HTML; the splitter returns only a manifest, never the text; each part travels to a local LLM as a stateless request with no chat history, and comes back through put_chunk.](bsp.svg)
+
 ## Motivation
 
 Translating a long Markdown document with a local model is a context problem
-before it is a language problem. A 60 KB handbook does not fit into an 8k
+before it is a language problem. A 60 KB handbook does not fit into an 8k-token
 window, so it has to be cut — and the naive cuts are exactly the damaging ones.
 Split every N characters and a code fence ends up half in one piece and half in
 the next; the model dutifully "translates" the orphaned half, renames the
@@ -146,6 +148,8 @@ content moves one part at a time.
 | `put_chunk` | `jobId`, `part`, `text` | stores the translated part, reports progress and the next open part |
 | `job_status` | `jobId` \| `chunksDir` | progress and part list, no content |
 | `merge_chunks` | `jobId` \| `chunksDir`, `out` | reassembles; edited parts win, untouched parts fall back to the original |
+| `translate_chunk` | `jobId`, `part`, `language`, `mode` | translates one part via the configured endpoint; only a status line comes back |
+| `build_glossary` | `jobId`, `language`, `terms` | proposes the document's terminology and writes `glossary.json` for review |
 
 A translation run looks like this:
 
@@ -249,6 +253,55 @@ context window at all.
 In both modes, inline code, URLs, link and image targets, reference links,
 footnotes and inline HTML are masked. Image *alt text* stays translatable on
 purpose: it is prose a reader sees, while the path is not.
+
+### Glossary
+
+Because every chunk is translated in isolation, nothing otherwise stops a model
+from rendering the same term two ways in two chunks. Measured on this README,
+one term drifted four ways across four languages:
+
+| "code fences" became | |
+|---|---|
+| Spanish | delimitador de código |
+| French | **un code** — the term simply dropped |
+| Chinese | 代码块 |
+| German | Code-Abschnitte |
+
+```bash
+mcp-md-splitter -glossary -dir chunks/ -lang es   # writes chunks/glossary.json
+$EDITOR chunks/glossary.json                      # ← the point of the exercise
+mcp-md-splitter -translate -dir chunks/ -lang es  # picks it up automatically
+```
+
+Candidates are found **without a model**: words and phrases that recur across
+several chunks, and that also appear inside code or an identifier somewhere in
+the document — "chunk" is prose in one line and `chunks/` in the next. Only
+identifier-shaped tokens count from inside a fence, because fenced blocks are
+full of English in comments and JSON values, and counting that made "without"
+and "returns" look like technical terms.
+
+They are then translated in **one** request, not one per chunk. A per-chunk pass
+would tie a fragile structured output to the valuable one — a JSON parse failure
+would cost a translation too — and it would make the glossary depend on the
+order chunks were processed in.
+
+The glossary is built **before** translating and then frozen. Growing one while
+translating would leave the earliest parts done with an empty glossary and the
+last with a full one, baking the very inconsistency it exists to remove into the
+parts done first, and making a single part impossible to redo on its own.
+
+A value that comes back as a sentence is rejected rather than stored. This is
+not cosmetic: each entry is injected into every prompt that mentions its term,
+as `term = value`, so a sentence there steers the translation instead of
+sharpening it. Measured against a 7B model, `chunk starts` came back as *"un
+bloque que comienza en mitad de una fence es dañino."*
+
+Only entries whose term actually occurs in a chunk are sent with it, so a
+200-entry glossary does not inflate every prompt.
+
+`glossary.json` is meant to be edited. "Interface = Schnittstelle" is a
+decision, not a fact, and this is the cheapest point in the pipeline to correct
+one — a few minutes here beats re-reading eleven translated chunks.
 
 ### Models whose chat template will not take our request
 
