@@ -56,7 +56,7 @@ func main() {
 	case *translateMode:
 		runTranslateMode(*chunksDir, cfg, *language, *sourceLang, *mode)
 	case *glossaryMode:
-		runGlossaryMode(*chunksDir, cfg, *language, *glossaryLimit)
+		runGlossaryMode(*chunksDir, cfg, *language, *sourceLang, *glossaryLimit)
 	case *checkMode:
 		runCheckMode(*chunksDir)
 	case *mergeMode:

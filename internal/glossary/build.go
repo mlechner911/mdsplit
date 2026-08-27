@@ -21,6 +21,9 @@ const FileName = "glossary.json"
 // place in the pipeline where a couple of minutes of human judgement is cheap
 // and pays off across every chunk.
 type File struct {
+	// SourceLang is the language the terms are in. Recorded because a glossary
+	// is only valid for the pair it was built for.
+	SourceLang string            `json:"source_lang"`
 	TargetLang string            `json:"target_lang"`
 	Model      string            `json:"model,omitempty"`
 	Generated  string            `json:"generated,omitempty"`
@@ -62,14 +65,15 @@ func (f *File) Save(dir string) error {
 // on the order chunks were processed in, and it would tie a fragile structured
 // output to the valuable one: a JSON parse failure would cost a translation
 // too. Here a failure costs a retry and nothing else.
-func prompt(lang string, cands []Candidate) (string, string) {
-	system := "You are a terminology expert preparing a glossary for a technical translation into " + lang + ".\n\n" +
-		"For each English term, give the translation a professional technical translator would use " +
+func prompt(srcLang, lang string, cands []Candidate) (string, string) {
+	system := "You are a terminology expert preparing a glossary for a technical translation from " +
+		srcLang + " into " + lang + ".\n\n" +
+		"For each " + srcLang + " term, give the translation a professional technical translator would use " +
 		"consistently throughout a software manual.\n\n" +
 		"Rules:\n" +
-		"- Answer with a single JSON object mapping each English term to its " + lang + " translation.\n" +
+		"- Answer with a single JSON object mapping each " + srcLang + " term to its " + lang + " translation.\n" +
 		"- No commentary, no code fence, no other keys.\n" +
-		"- Keep a term in English when that is what practitioners actually say in " + lang + ".\n" +
+		"- Leave a term unchanged when that is what practitioners actually say in " + lang + ".\n" +
 		"- Never translate an identifier, a flag, a file name or a command.\n" +
 		"- Each value is a term of roughly the same length as the key. Never a sentence, " +
 		"never an explanation, never alternatives separated by slashes."
@@ -87,16 +91,20 @@ func prompt(lang string, cands []Candidate) (string, string) {
 // sentence or wraps the answer in a fence still gets understood.
 var jsonObjectRx = regexp.MustCompile(`(?s)\{.*\}`)
 
-// Build asks the model for one glossary in one request.
-func Build(ctx context.Context, c *llm.Client, lang string, cands []Candidate) (map[string]string, error) {
+// Build asks the model for one glossary in one request. srcLang and lang are
+// language names ("English", "German"), because that is what a prompt reads.
+func Build(ctx context.Context, c *llm.Client, srcLang, lang string, cands []Candidate) (map[string]string, error) {
 	if len(cands) == 0 {
 		return map[string]string{}, nil
 	}
-	system, user := prompt(lang, cands)
+	if srcLang == "" {
+		srcLang = "English"
+	}
+	system, user := prompt(srcLang, lang, cands)
 	reply, err := c.Ask(ctx, llm.PromptData{
 		System: system, User: user,
 		TargetLang: lang, TargetLangName: lang,
-		SourceLang: "en", SourceLangName: "English",
+		SourceLang: srcLang, SourceLangName: srcLang,
 	})
 	if err != nil {
 		return nil, err

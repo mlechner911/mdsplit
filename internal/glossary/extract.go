@@ -20,6 +20,45 @@ import (
 	"github.com/mlechner911/mdsplit/internal/split"
 )
 
+// SourceSupport says how well candidate extraction works for a source
+// language. The extractor is English: its stopword list is English, and it
+// splits words on spaces.
+type SourceSupport int
+
+const (
+	// SupportGood - the extractor was built and measured for this language.
+	SupportGood SourceSupport = iota
+	// SupportNoisy - words are space-separated, but the stopword list does not
+	// cover this language, so ordinary function words will appear as terms.
+	SupportNoisy
+	// SupportNone - the language is not written with spaces between words, so
+	// there is nothing here to tokenise with. Chinese, Japanese, Thai.
+	SupportNone
+)
+
+// unspaced are the scripts this extractor cannot tokenise at all.
+var unspaced = map[string]bool{"zh": true, "ja": true, "th": true, "ko": true}
+
+// Support reports what to expect from Candidates for a source language, so a
+// caller can warn rather than quietly hand back a list of articles and
+// prepositions.
+func Support(code string) (SourceSupport, string) {
+	code = strings.ToLower(strings.TrimSpace(code))
+	if i := strings.IndexAny(code, "-_"); i > 0 {
+		code = code[:i]
+	}
+	switch {
+	case code == "" || code == "en" || code == "english":
+		return SupportGood, ""
+	case unspaced[code]:
+		return SupportNone, "candidate extraction needs spaces between words and this language has none; " +
+			"write the glossary by hand instead"
+	default:
+		return SupportNoisy, "candidate extraction is tuned for English sources: its stopword list is English, " +
+			"so ordinary function words will show up as candidates and need deleting"
+	}
+}
+
 // Candidate is a term worth deciding on, with the evidence for it.
 type Candidate struct {
 	Term     string `json:"term"`

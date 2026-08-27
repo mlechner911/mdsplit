@@ -303,6 +303,26 @@ Only entries whose term actually occurs in a chunk are sent with it, so a
 decision, not a fact, and this is the cheapest point in the pipeline to correct
 one — a few minutes here beats re-reading eleven translated chunks.
 
+#### Source language
+
+Candidate extraction assumes an **English source**, and not only in the prompt.
+Its stopword list is English, and it finds words by splitting on spaces. Pass
+`-source-lang` to say otherwise; the tool then tells you what to expect rather
+than quietly handing back a list of articles and prepositions:
+
+| Source | What happens |
+|---|---|
+| English (default) | what the extractor was built and measured for |
+| German, Spanish, French, … | works, but warns: function words will appear among the candidates and need deleting |
+| Chinese, Japanese, Korean, Thai | refuses — there are no spaces to split on, so write the glossary by hand |
+
+The language pair is recorded in `glossary.json` as `source_lang` /
+`target_lang`, because a glossary is only valid for the pair it was built for.
+
+Translation itself has no such limitation: `-source-lang` reaches the prompt
+template, and the block-mode structure guarantees hold whatever the languages
+are. It is only the *terminology extraction* that is English-shaped.
+
 ### Models whose chat template will not take our request
 
 Some models ship a chat template an OpenAI-compatible layer cannot satisfy.

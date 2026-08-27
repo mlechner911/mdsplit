@@ -20,7 +20,7 @@ import (
 // and the last with a full one - baking the inconsistency it exists to remove
 // into exactly the parts translated first, and making a single part impossible
 // to redo on its own.
-func runGlossaryMode(dir string, cfg llm.Config, language string, limit int) {
+func runGlossaryMode(dir string, cfg llm.Config, language, sourceLang string, limit int) {
 	if dir == "" {
 		fmt.Println("error: pass the chunk directory with -dir (e.g. chunks/)")
 		os.Exit(1)
@@ -51,6 +51,12 @@ func runGlossaryMode(dir string, cfg llm.Config, language string, limit int) {
 		fmt.Printf("error: cannot read the source: %v\n", err)
 		os.Exit(1)
 	}
+	if level, note := glossary.Support(sourceLang); level != glossary.SupportGood {
+		fmt.Printf("warning: source language %q - %s\n", sourceLang, note)
+		if level == glossary.SupportNone {
+			os.Exit(1)
+		}
+	}
 	cands := glossary.Candidates(string(source), limit)
 	if len(cands) == 0 {
 		fmt.Println("no recurring terminology found - nothing to pin")
@@ -63,15 +69,18 @@ func runGlossaryMode(dir string, cfg llm.Config, language string, limit int) {
 		os.Exit(1)
 	}
 	lang := translate.LanguageName(language)
-	fmt.Printf("asking %s for %s equivalents (one request)\n\n", cfg.Model, lang)
+	fmt.Printf("asking %s for %s -> %s equivalents (one request)\n\n",
+		cfg.Model, translate.LanguageName(sourceLang), lang)
 
-	terms, err := glossary.Build(context.Background(), llm.New(cfg), lang, cands)
+	terms, err := glossary.Build(context.Background(), llm.New(cfg),
+		translate.LanguageName(sourceLang), lang, cands)
 	if err != nil {
 		fmt.Printf("error: %v\n", err)
 		os.Exit(1)
 	}
 
 	f := &glossary.File{
+		SourceLang: sourceLang,
 		TargetLang: language,
 		Model:      cfg.Model,
 		Generated:  time.Now().UTC().Format(time.RFC3339),

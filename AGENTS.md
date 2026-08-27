@@ -97,3 +97,9 @@ These are load-bearing; the tests encode them.
   point of the job workflow; `TestSplitReturnsNoContent` guards it.
 - **`put_chunk` writes beside the original, never over it.** Runs stay
   resumable and re-doable per part.
+- **Glossary candidate extraction is English-shaped and says so.** The stopword
+  list is English and words are found by splitting on spaces. `glossary.Support`
+  classifies a source language so the caller warns (other space-separated
+  languages) or refuses (Chinese, Japanese, Korean, Thai) instead of returning
+  a list of function words. Translation has no such limitation - only the
+  terminology extraction does.

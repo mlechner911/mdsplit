@@ -481,6 +481,8 @@ func buildGlossaryTool() mcp.Tool {
 			mcp.Description("target language, e.g. \"de\"; defaults to the language recorded at split time")),
 		mcp.WithNumber("terms",
 			mcp.Description("how many candidate terms to propose (default 40)")),
+		mcp.WithString("sourceLanguage",
+			mcp.Description("the language the document is written in (default \"en\"). Candidate extraction is tuned for English: its stopword list is English and it splits words on spaces, so another source gives noisier candidates and a language written without spaces gives none.")),
 	)
 }
 
@@ -510,12 +512,16 @@ func buildGlossaryHandler(ctx context.Context, req mcp.CallToolRequest) (*mcp.Ca
 	}
 
 	name := translate.LanguageName(lang)
-	terms, err := glossary.Build(ctx, llm.New(llmCfg), name, cands)
+	srcLang := argString(req, "sourceLanguage")
+	if level, note := glossary.Support(srcLang); level == glossary.SupportNone {
+		return mcp.NewToolResultError(fmt.Sprintf("source language %q: %s", srcLang, note)), nil
+	}
+	terms, err := glossary.Build(ctx, llm.New(llmCfg), translate.LanguageName(srcLang), name, cands)
 	if err != nil {
 		return mcp.NewToolResultError(err.Error()), nil
 	}
 	f := &glossary.File{
-		TargetLang: lang, Model: llmCfg.Model,
+		SourceLang: srcLang, TargetLang: lang, Model: llmCfg.Model,
 		Generated: time.Now().UTC().Format(time.RFC3339),
 		Terms:     terms, Notes: glossary.Notes(cands),
 	}

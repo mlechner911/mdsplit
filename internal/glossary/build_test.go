@@ -1,6 +1,9 @@
 package glossary
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 // TestIsTerm hält fest, was ein Glossareintrag sein darf. Der Wert wird als
 // Regel "term = value" in jeden Übersetzungsprompt injiziert, der den Begriff
@@ -84,5 +87,49 @@ func TestCandidates_NoPairsAcrossPunctuation(t *testing.T) {
 		if c.Term == "fences tables" {
 			t.Errorf("Paar über Satzzeichen hinweg gebildet: %+v", c)
 		}
+	}
+}
+
+// TestSupport benennt, was die Kandidatenauswahl je Quellsprache leisten kann.
+// Sie ist englisch: englische Stoppwortliste, Trennung an Leerzeichen. Das
+// still hinzunehmen hieße, dem Nutzer eine Liste aus Artikeln und
+// Präpositionen als Terminologie zu verkaufen.
+func TestSupport(t *testing.T) {
+	cases := map[string]SourceSupport{
+		"":        SupportGood,
+		"en":      SupportGood,
+		"en-GB":   SupportGood,
+		"English": SupportGood,
+		"de":      SupportNoisy,
+		"es":      SupportNoisy,
+		"fr":      SupportNoisy,
+		"zh":      SupportNone,
+		"zh-CN":   SupportNone,
+		"ja":      SupportNone,
+		"th":      SupportNone,
+	}
+	for code, want := range cases {
+		got, note := Support(code)
+		if got != want {
+			t.Errorf("Support(%q) = %v, erwartet %v", code, got, want)
+		}
+		if want != SupportGood && note == "" {
+			t.Errorf("Support(%q) meldet ein Problem ohne Begründung", code)
+		}
+		if want == SupportGood && note != "" {
+			t.Errorf("Support(%q) warnt ohne Anlass: %q", code, note)
+		}
+	}
+}
+
+// TestPrompt_UsesTheSourceLanguage: der Prompt sagte fest "For each English
+// term", auch wenn die Quelle deutsch war.
+func TestPrompt_UsesTheSourceLanguage(t *testing.T) {
+	system, _ := prompt("German", "Spanish", []Candidate{{Term: "Leerzeile"}})
+	if !strings.Contains(system, "from German into Spanish") {
+		t.Errorf("Sprachpaar fehlt im Prompt:\n%s", system)
+	}
+	if strings.Contains(system, "English") {
+		t.Errorf("Prompt behauptet weiterhin Englisch:\n%s", system)
 	}
 }
