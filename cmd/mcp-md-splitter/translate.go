@@ -17,7 +17,7 @@ import (
 // runTranslateMode walks every part that has not been written back yet and
 // sends each one as an isolated request. Nothing accumulates between parts, so
 // a 10 MB document costs the same context per step as a 10 KB one.
-func runTranslateMode(dir string, cfg llm.Config, language, mode string) {
+func runTranslateMode(dir string, cfg llm.Config, language, sourceLang, mode string) {
 	if dir == "" {
 		fmt.Println("error: pass the chunk directory with -dir (e.g. chunks/)")
 		os.Exit(1)
@@ -49,9 +49,10 @@ func runTranslateMode(dir string, cfg llm.Config, language, mode string) {
 
 	client := llm.New(cfg)
 	opts := translate.Options{
-		Language: language,
-		Glossary: m.Glossary,
-		Mode:     translate.Mode(mode),
+		Language:   language,
+		SourceLang: sourceLang,
+		Glossary:   m.Glossary,
+		Mode:       translate.Mode(mode),
 	}
 	if opts.Mode != translate.ModeBlock && opts.Mode != translate.ModeChunk {
 		fmt.Printf("error: unknown -mode %q (use block or chunk)\n", mode)

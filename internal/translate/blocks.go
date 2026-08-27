@@ -270,7 +270,7 @@ func byBlocks(ctx context.Context, c *llm.Client, chunk string, opts Options, st
 		out, hit := memo[masked]
 		if !hit {
 			system, applied := segmentPrompt(opts, p.text)
-			reply, err := c.Chat(ctx, system, masked)
+			reply, err := c.Ask(ctx, opts.prompt(system, masked))
 			if err != nil {
 				return "", err
 			}
@@ -297,6 +297,9 @@ func byBlocks(ctx context.Context, c *llm.Client, chunk string, opts Options, st
 	return b.String(), nil
 }
 
+// blankLineRx finds a run of newlines that would end a block.
+var blankLineRx = regexp.MustCompile(`\n[ \t]*\n[\s]*`)
+
 var structuralStartRx = regexp.MustCompile("^[ \t]*(?:#{1,6}[ \t]|[-*+][ \t]|\\d{1,9}[.)][ \t]|>|\\||`{3,}|~{3,})")
 
 // fitFragment forces a reply back into the shape of the fragment it replaces.
@@ -311,6 +314,13 @@ var structuralStartRx = regexp.MustCompile("^[ \t]*(?:#{1,6}[ \t]|[-*+][ \t]|\\d
 func fitFragment(src, out string) (string, error) {
 	if !strings.Contains(src, "\n") && strings.Contains(out, "\n") {
 		out = strings.Join(strings.Fields(strings.ReplaceAll(out, "\n", " ")), " ")
+	}
+	// A blank line ends a block. No fragment the planner produces contains one
+	// - a paragraph stops at the first blank line, and headings, cells and list
+	// items are single lines - so a blank line in the reply is the model
+	// splitting one block into two.
+	if !blankLineRx.MatchString(src) {
+		out = blankLineRx.ReplaceAllString(out, "\n")
 	}
 	if structuralStartRx.MatchString(out) && !structuralStartRx.MatchString(src) {
 		return "", fmt.Errorf("reply starts a new Markdown construct the source did not: %.40q", out)

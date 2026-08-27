@@ -212,3 +212,40 @@ func TestDescribe_HidesToken(t *testing.T) {
 		t.Errorf("Statuszeile verschweigt, dass ein Token gesetzt ist: %q", d)
 	}
 }
+
+// TestResolveTemplate_Shorthand: eine mehrzeilige Vorlage in eine Env-Variable
+// zu kleben ist fehleranfällig; für bekannte Modellfamilien reicht ein Name.
+func TestResolveTemplate_Shorthand(t *testing.T) {
+	if got := ResolveTemplate(""); got != DefaultPromptTemplate {
+		t.Error("leerer Name liefert nicht die Standardvorlage")
+	}
+	if got := ResolveTemplate("translategemma"); got != TranslateGemmaTemplate {
+		t.Error("Kurzform translategemma nicht aufgelöst")
+	}
+	if got := ResolveTemplate("custom {{.User}}"); got != "custom {{.User}}" {
+		t.Error("eigene Vorlage wurde verändert")
+	}
+}
+
+// TestTranslateGemmaTemplate_RendersLanguagePair: eine Vorlage für alle
+// Sprachpaare - sonst bräuchte jede Zielsprache ihre eigene Env-Variable.
+func TestTranslateGemmaTemplate_RendersLanguagePair(t *testing.T) {
+	var got capture
+	srv := fakeEndpoint(t, 200, `{"choices":[{"text":"x","finish_reason":"stop"}]}`, &got)
+	defer srv.Close()
+
+	c := New(Config{BaseURL: srv.URL, Model: "tg", Transport: TransportCompletions,
+		PromptTemplate: "translategemma"})
+	if _, err := c.Ask(context.Background(), PromptData{
+		User: "Hello", SourceLang: "en", TargetLang: "zh",
+		SourceLangName: "English", TargetLangName: "Chinese",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	p, _ := got.body["prompt"].(string)
+	for _, want := range []string{"English (en) to Chinese (zh) translator", "into Chinese:", "Hello", "<start_of_turn>model"} {
+		if !strings.Contains(p, want) {
+			t.Errorf("Prompt ohne %q:\n%s", want, p)
+		}
+	}
+}

@@ -26,6 +26,23 @@ var languages = map[string]string{
 	"tr": "Turkish", "cs": "Czech", "sv": "Swedish", "da": "Danish",
 }
 
+// prompt builds the payload for one request, carrying the language pair so a
+// template can render whatever shape its model expects.
+func (o Options) prompt(system, user string) llm.PromptData {
+	src := o.SourceLang
+	if src == "" {
+		src = "en"
+	}
+	return llm.PromptData{
+		System:         system,
+		User:           user,
+		SourceLang:     src,
+		TargetLang:     o.Language,
+		SourceLangName: LanguageName(src),
+		TargetLangName: LanguageName(o.Language),
+	}
+}
+
 // LanguageName resolves a code or name into something to put in a prompt.
 func LanguageName(s string) string {
 	s = strings.TrimSpace(s)
@@ -56,6 +73,8 @@ type Options struct {
 	Mode Mode
 	// Language is the target language; a code like "de" is expanded.
 	Language string
+	// SourceLang is the language the document is in; empty means "en".
+	SourceLang string
 	// Instruction replaces the default translation task when set, so the same
 	// machinery can rewrite or summarise instead of translate.
 	Instruction string
@@ -199,7 +218,7 @@ func Part(ctx context.Context, c *llm.Client, m *job.Manifest, n int, opts Optio
 	case ModeChunk:
 		masked, tokens := maskChunk(src)
 		system, applied := systemPrompt(opts, masked)
-		reply, err := c.Chat(ctx, system, masked)
+		reply, err := c.Ask(ctx, opts.prompt(system, masked))
 		if err != nil {
 			return Result{}, fmt.Errorf("part %d: %w", n, err)
 		}

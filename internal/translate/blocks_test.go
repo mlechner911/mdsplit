@@ -213,6 +213,20 @@ func TestFitFragment(t *testing.T) {
 			t.Errorf("got %q / %v", got, err)
 		}
 	})
+	t.Run("neue Leerzeile wird geschlossen", func(t *testing.T) {
+		// Eine Leerzeile beendet einen Block: aus einem Absatz würden zwei,
+		// und alle folgenden Blöcke verschieben sich.
+		got, err := fitFragment("erste Zeile\nzweite Zeile", "primera línea\n\nsegunda línea")
+		if err != nil {
+			t.Fatalf("unerwarteter Fehler: %v", err)
+		}
+		if strings.Contains(got, "\n\n") {
+			t.Errorf("Leerzeile blieb stehen: %q", got)
+		}
+		if got != "primera línea\nsegunda línea" {
+			t.Errorf("got %q", got)
+		}
+	})
 	t.Run("neuer Listenmarker wird abgelehnt", func(t *testing.T) {
 		if _, err := fitFragment("some prose", "- ein Punkt"); err == nil {
 			t.Error("führender Listenmarker wurde nicht erkannt")

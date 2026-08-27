@@ -20,7 +20,8 @@ func main() {
 	chunksDir := flag.String("dir", "", "chunk directory containing index.json (merge mode)")
 	outFile := flag.String("out", "", "merge output path (default: <source>.merged)")
 	target := flag.String("target", "", "suffix for edited parts, e.g. de (default: out)")
-	language := flag.String("lang", "", "target language for -translate, e.g. de or German")
+	language := flag.String("lang", "", "target language for -translate, e.g. de, es, fr, zh")
+	sourceLang := flag.String("source-lang", "en", "language the document is written in")
 	translateMode := flag.Bool("translate", false, "translate every open part of a split via the configured LLM")
 	stamp := flag.Bool("stamp", false, "write provenance (tool, version, source hash, model) into the merged document's YAML front matter")
 	checkMode := flag.Bool("check", false, "report whether a split is still current: progress, and whether the source changed since it was made")
@@ -35,7 +36,7 @@ func main() {
 	llmModel := flag.String("llm-model", env.Model, "model name (env MDSPLIT_LLM_MODEL)")
 	llmTimeout := flag.Duration("llm-timeout", env.Timeout, "per-request timeout (env MDSPLIT_LLM_TIMEOUT)")
 	llmTransport := flag.String("llm-transport", string(env.Transport), "chat (default) or completions; completions renders the prompt here instead of relying on the server's chat template (env MDSPLIT_LLM_TRANSPORT)")
-	llmTemplate := flag.String("llm-template", env.PromptTemplate, "Go template for the completions transport, fields .System .User .SourceLang .TargetLang (env MDSPLIT_LLM_TEMPLATE)")
+	llmTemplate := flag.String("llm-template", env.PromptTemplate, "Go template for the completions transport, or the shorthand \"translategemma\"; fields .System .User .SourceLang .TargetLang .SourceLangName .TargetLangName (env MDSPLIT_LLM_TEMPLATE)")
 	flag.Parse()
 
 	cfg := llm.Config{
@@ -50,7 +51,7 @@ func main() {
 
 	switch {
 	case *translateMode:
-		runTranslateMode(*chunksDir, cfg, *language, *mode)
+		runTranslateMode(*chunksDir, cfg, *language, *sourceLang, *mode)
 	case *checkMode:
 		runCheckMode(*chunksDir)
 	case *mergeMode:

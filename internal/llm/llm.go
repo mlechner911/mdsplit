@@ -48,6 +48,17 @@ const (
 // Available fields: .System, .User, .SourceLang, .TargetLang.
 const DefaultPromptTemplate = "<start_of_turn>user\n{{.System}}\n\n{{.User}}<end_of_turn>\n<start_of_turn>model\n"
 
+// TranslateGemmaTemplate reproduces the instruction TranslateGemma's own chat
+// template builds, for use with the completions transport. One template covers
+// every language pair.
+const TranslateGemmaTemplate = "<start_of_turn>user\n" +
+	"You are a professional {{.SourceLangName}} ({{.SourceLang}}) to {{.TargetLangName}} ({{.TargetLang}}) " +
+	"translator. Your goal is to accurately convey the meaning and nuances of the original " +
+	"{{.SourceLangName}} text while adhering to {{.TargetLangName}} grammar, vocabulary, and cultural " +
+	"sensitivities.\nProduce only the {{.TargetLangName}} translation, without any additional " +
+	"explanations or commentary. Please translate the following {{.SourceLangName}} text into " +
+	"{{.TargetLangName}}:\n\n\n{{.User}}<end_of_turn>\n<start_of_turn>model\n"
+
 // DefaultStop ends generation at the end of the model turn.
 var DefaultStop = []string{"<end_of_turn>"}
 
@@ -64,12 +75,17 @@ type Config struct {
 	Stop []string
 }
 
-// PromptData is what a prompt template can reference.
+// PromptData is what a prompt template can reference. Codes and names are both
+// offered because models want different halves: TranslateGemma's own template
+// writes "professional English (en) to German (de) translator", so a template
+// that only had one of them could not reproduce it.
 type PromptData struct {
-	System     string
-	User       string
-	SourceLang string
-	TargetLang string
+	System         string
+	User           string
+	SourceLang     string // "en"
+	TargetLang     string // "de"
+	SourceLangName string // "English"
+	TargetLangName string // "German"
 }
 
 // ConfigFromEnv reads MDSPLIT_LLM_URL / _MODEL / _TOKEN / _TIMEOUT. Flags
@@ -124,6 +140,19 @@ func (c Config) url() string {
 		u = DefaultURL
 	}
 	return u
+}
+
+// ResolveTemplate expands a named shorthand, so a caller does not have to
+// paste a multi-line template into an env var to use a known model family.
+func ResolveTemplate(name string) string {
+	switch strings.TrimSpace(name) {
+	case "":
+		return DefaultPromptTemplate
+	case "translategemma":
+		return TranslateGemmaTemplate
+	default:
+		return name
+	}
 }
 
 // Client sends chat completions.
@@ -251,10 +280,7 @@ func (c *Client) Ask(ctx context.Context, data PromptData) (string, error) {
 // buildRequest renders the payload for the configured transport.
 func (c *Client) buildRequest(data PromptData) (string, []byte, error) {
 	if c.cfg.transport() == TransportCompletions {
-		tmplText := c.cfg.PromptTemplate
-		if tmplText == "" {
-			tmplText = DefaultPromptTemplate
-		}
+		tmplText := ResolveTemplate(c.cfg.PromptTemplate)
 		tmpl, err := template.New("prompt").Parse(tmplText)
 		if err != nil {
 			return "", nil, fmt.Errorf("parse prompt template: %w", err)
