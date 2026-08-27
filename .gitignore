@@ -1,0 +1,15 @@
+# Build-Artefakte
+bin/
+/mcp-md-splitter
+.task/
+
+# Erzeugte Splits und Merges (task roundtrip / smoke legt sie an)
+chunks/
+*.merged
+*-part-*.md
+
+# Lokaler Zustand der Agent-CLIs – enthält Konversations-DB und Logs,
+# gehört niemals in ein öffentliches Repo.
+.crush/
+.opencode/
+.claude/

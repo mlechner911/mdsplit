@@ -1,0 +1,61 @@
+version: '3'
+
+vars:
+  BINARY: mcp-md-splitter
+  PKG: ./cmd/mcp-md-splitter
+  VERSION_FILE: $(cat VERSION)
+
+tasks:
+  build:
+    desc: Build the binary into bin/
+    cmds:
+      - go build -ldflags "-X main.version={{.VERSION_FILE}}" -o bin/{{.BINARY}} {{.PKG}}
+    sources:
+      - "./**/*.go"
+      - "go.mod"
+      - "go.sum"
+
+  test:
+    desc: Run all tests verbosely
+    cmds:
+      - go test -v -count=1 ./...
+
+  vet:
+    desc: Run go vet
+    cmds:
+      - go vet ./...
+
+  check:
+    desc: Vet + test + build (full CI-style check)
+    deps: [vet, test, build]
+
+  smoke:
+    desc: CLI smoke test on the test.md fixture
+    cmds:
+      - rm -rf chunks
+      - go run {{.PKG}} -cli -file test.md -size 4000
+      - ls -la chunks/
+
+  roundtrip:
+    desc: "Split test.md, merge zurück, prüfen ob identisch (normalisiert)"
+    deps: [build]
+    cmds:
+      - rm -rf chunks test.md.merged
+      - ./bin/{{.BINARY}} -cli -file test.md -size 4000
+      - ./bin/{{.BINARY}} -merge -dir chunks/
+
+  install:
+    desc: Lokal installieren nach $GOBIN (~/go/bin) – danach global `mcp-md-splitter` verfügbar
+    cmds:
+      - go install -ldflags "-X main.version={{.VERSION_FILE}}" {{.PKG}}
+      - cp ./bin/{{.BINARY}} ~/.local/bin
+
+  clean:
+    desc: Remove build artifacts
+    cmds:
+      - rm -rf bin chunks
+      - rm -f *.merged
+
+  default:
+    desc: Full check (vet + test + build)
+    deps: [check]
