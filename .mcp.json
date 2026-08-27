@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "md-splitter": {
+      "command": "mcp-md-splitter",
+      "description": "Markdown-Splitter v1.3.0 – Job-Workflow: split_markdown (Manifest) → get_chunk/put_chunk je Teil → merge_chunks. Vorab: task install"
+    }
+  }
+}
