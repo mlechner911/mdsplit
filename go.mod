@@ -2,10 +2,7 @@ module mcp-md-splitter
 
 go 1.25.7
 
-require (
-	github.com/mark3labs/mcp-go v0.58.0
-	github.com/yuin/goldmark v1.8.5
-)
+require github.com/mark3labs/mcp-go v0.58.0
 
 require (
 	github.com/google/jsonschema-go v0.4.2 // indirect
