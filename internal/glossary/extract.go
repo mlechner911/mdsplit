@@ -34,6 +34,9 @@ var (
 	codeSpanRx = regexp.MustCompile("`+[^`]*`+")
 	wordRx     = regexp.MustCompile(`\p{L}[\p{L}\d-]*`)
 	sentenceRx = regexp.MustCompile(`[^.!?\n]*[.!?]`)
+	// clauseRx splits on punctuation so a pair is never formed across it.
+	// "code fences, tables and list items" must not yield "fences tables".
+	clauseRx = regexp.MustCompile(`[,.;:!?()\[\]{}"—–\n]+`)
 )
 
 // stopwords keeps the everyday scaffolding of English out of a terminology
@@ -65,6 +68,13 @@ var stopwords = map[string]bool{
 	"say": true, "says": true, "see": true, "seen": true, "still": true,
 	"even": true, "already": true, "instead": true, "rather": true,
 	"whole": true, "exactly": true, "without": true, "actually": true,
+	// Verbformen auf -s bilden mit dem Vorwort gern Scheinbegriffe
+	// ("chunk starts", "tool writes"), sind aber Satzbau, nicht Terminologie.
+	"starts": true, "ends": true, "goes": true, "works": true, "holds": true,
+	"means": true, "shows": true, "reads": true, "writes": true, "runs": true,
+	"contains": true, "carries": true, "counts": true, "count": true,
+	"alone": true, "always": true, "never": true, "often": true, "later": true,
+	"first": true, "last": true, "both": true, "either": true, "neither": true,
 }
 
 // Candidates proposes terminology from a document, without a model.
@@ -90,7 +100,6 @@ func Candidates(doc string, limit int) []Candidate {
 
 	for i, para := range proseParagraphs(doc) {
 		clean := codeSpanRx.ReplaceAllString(para, " ")
-		words := wordRx.FindAllString(clean, -1)
 		note := func(term, example string) {
 			key := strings.ToLower(term)
 			a := seen[key]
@@ -101,16 +110,19 @@ func Candidates(doc string, limit int) []Candidate {
 			a.count++
 			a.chunks[i] = true
 		}
-		for j, w := range words {
-			lw := strings.ToLower(w)
-			if len(lw) < 3 || stopwords[lw] {
-				continue
-			}
-			note(lw, sentenceAround(para, w))
-			if j+1 < len(words) {
-				next := strings.ToLower(words[j+1])
-				if len(next) >= 3 && !stopwords[next] {
-					note(lw+" "+next, sentenceAround(para, w))
+		for _, clause := range clauseRx.Split(clean, -1) {
+			words := wordRx.FindAllString(clause, -1)
+			for j, w := range words {
+				lw := strings.ToLower(w)
+				if len(lw) < 3 || stopwords[lw] {
+					continue
+				}
+				note(lw, sentenceAround(para, w))
+				if j+1 < len(words) {
+					next := strings.ToLower(words[j+1])
+					if len(next) >= 3 && !stopwords[next] {
+						note(lw+" "+next, sentenceAround(para, w))
+					}
 				}
 			}
 		}
@@ -148,6 +160,8 @@ func Candidates(doc string, limit int) []Candidate {
 		}
 		return out[i].Term < out[j].Term
 	})
+	out = dropIdentifiers(out, doc)
+	out = mergeVariants(out)
 	out = dropSubsumed(out)
 	if len(out) > limit {
 		out = out[:limit]
@@ -161,6 +175,58 @@ func headWord(term string) string {
 		return term[:i]
 	}
 	return term
+}
+
+// dropIdentifiers removes a candidate that names a thing in the code rather
+// than a concept in the prose. "put chunk" comes from put_chunk, a tool name
+// that must never be translated - and a 7B duly rendered it "Chunk
+// hinzufügen". A phrase is an identifier when its words, joined the way code
+// joins them, appear in the document.
+func dropIdentifiers(in []Candidate, doc string) []Candidate {
+	code := strings.ToLower(doc)
+	isIdent := func(term string) bool {
+		words := strings.Fields(term)
+		if len(words) < 2 {
+			return false
+		}
+		for _, sep := range []string{"_", "-", "", "."} {
+			if strings.Contains(code, strings.Join(words, sep)+"(") ||
+				strings.Contains(code, "`"+strings.Join(words, sep)) {
+				return true
+			}
+		}
+		return strings.Contains(code, strings.Join(words, "_"))
+	}
+	var out []Candidate
+	for _, c := range in {
+		if isIdent(c.Term) {
+			continue
+		}
+		out = append(out, c)
+	}
+	return out
+}
+
+// mergeVariants folds "blank-line" into "blank line": the hyphen is an
+// attributive form of the same term, and two entries for one concept give a
+// reviewer two chances to disagree with themselves.
+func mergeVariants(in []Candidate) []Candidate {
+	seen := map[string]int{}
+	var out []Candidate
+	for _, c := range in {
+		key := strings.ReplaceAll(c.Term, "-", " ")
+		if i, ok := seen[key]; ok {
+			out[i].Count += c.Count
+			if c.Chunks > out[i].Chunks {
+				out[i].Chunks = c.Chunks
+			}
+			continue
+		}
+		seen[key] = len(out)
+		c.Term = key
+		out = append(out, c)
+	}
+	return out
 }
 
 // dropSubsumed removes a single word when a stronger phrase already contains

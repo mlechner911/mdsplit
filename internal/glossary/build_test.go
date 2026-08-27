@@ -43,3 +43,46 @@ func TestClean_DropsUnaskedAndUnchanged(t *testing.T) {
 		t.Errorf("clean = %v", got)
 	}
 }
+
+// TestCandidates_RejectsIdentifiers: put_chunk ist ein Werkzeugname. Ein 7B hat
+// daraus "Chunk hinzufügen" gemacht - ein Glossareintrag, der den Aufruf
+// unbrauchbar machen würde.
+func TestCandidates_RejectsIdentifiers(t *testing.T) {
+	doc := "# Doc\n\nCall put chunk to store a part. The put chunk step is safe.\n" +
+		"Later, put chunk again.\n\n```go\nput_chunk(jobId, part)\nput_chunk(jobId, 2)\n```\n\n" +
+		"A code fence is atomic. Every code fence stays whole. The code fence rule holds.\n"
+	for _, c := range Candidates(doc, 40) {
+		if c.Term == "put chunk" {
+			t.Errorf("Bezeichner put_chunk als Begriff vorgeschlagen: %+v", c)
+		}
+	}
+}
+
+// TestCandidates_MergesHyphenVariants: "blank line" und "blank-line" sind
+// derselbe Begriff und dürfen nicht zweimal zur Entscheidung stehen.
+func TestCandidates_MergesHyphenVariants(t *testing.T) {
+	doc := "# Doc\n\nA blank line ends a block. The blank-line gap is recorded.\n\n" +
+		"Every blank line matters. The blank-line rule is simple.\n\nOne more blank line here.\n"
+	seen := 0
+	for _, c := range Candidates(doc, 40) {
+		if c.Term == "blank line" || c.Term == "blank-line" {
+			seen++
+		}
+	}
+	if seen > 1 {
+		t.Errorf("Hyphen-Variante nicht zusammengeführt: %d Einträge", seen)
+	}
+}
+
+// TestCandidates_NoPairsAcrossPunctuation: "code fences, tables and lists"
+// darf nicht den Scheinbegriff "fences tables" erzeugen.
+func TestCandidates_NoPairsAcrossPunctuation(t *testing.T) {
+	doc := "# Doc\n\nCode fences, tables and list items stay whole.\n\n" +
+		"Again: code fences, tables and lists are atomic.\n\n" +
+		"And once more, code fences, tables and lists.\n"
+	for _, c := range Candidates(doc, 40) {
+		if c.Term == "fences tables" {
+			t.Errorf("Paar über Satzzeichen hinweg gebildet: %+v", c)
+		}
+	}
+}
