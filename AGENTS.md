@@ -1,76 +1,121 @@
 # AGENTS.md
 
-Go tool that splits Markdown files into size-bounded chunks, with three runtime modes selected by the `-cli` / `-merge` flags (default: MCP). Standard `cmd`/`internal` layout:
+Go tool that cuts Markdown into chunks a language model can process one at a
+time, and puts them back together byte for byte. Standard `cmd`/`internal`
+layout. Six runtime modes, selected by flags; MCP is the default.
 
-- **CLI mode** (`bin/mcp-md-splitter -cli -file X.md -size 4000`): writes chunks + JSON index next to the source file.
-- **Merge mode** (`bin/mcp-md-splitter -merge -dir chunks/ [-out X.md]`): Rückweg – reassembles chunks from the `index.json` manifest, preferring edited parts over originals; compares byte-exactly (`split.Canonical`) first and only then tolerantly (`split.Normalize`), printing ✅ byte-exact / ✅ whitespace-only / ⚠️ diverging.
-- **MCP mode** (default, no flags): serves a five-tool job workflow over stdio via `github.com/mark3labs/mcp-go` — `split_markdown` (returns a manifest, never the content), `get_chunk`, `put_chunk`, `job_status`, `merge_chunks`.
+| Mode | Flag | What it does |
+|---|---|---|
+| MCP server | *(none)* | seven tools over stdio via `github.com/mark3labs/mcp-go` |
+| Split | `-cli -file X.md -size N [-out-dir D]` | writes chunk files plus `index.json` |
+| Merge | `-merge -dir D [-out F] [-stamp]` | reassembles; edited parts win over originals |
+| Translate | `-translate -dir D -lang de [-mode block\|chunk]` | one isolated request per piece |
+| Glossary | `-glossary -dir D -lang de` | proposes terminology, writes `glossary.json` |
+| Check | `-check -dir D` | progress, and whether the source changed since the split |
+
+MCP tools: `split_markdown` (returns a manifest, **never** the content),
+`get_chunk`, `put_chunk`, `job_status`, `merge_chunks`, and — only when an
+endpoint is configured — `translate_chunk` and `build_glossary`.
 
 ## Commands
 
 ```bash
-# Taskfile (https://taskfile.dev, `task` is on PATH)
-task build     # -> bin/mcp-md-splitter (ldflags injects VERSION into main.version)
-task test      # go test -v -count=1 ./...
-task vet       # go vet ./...
-task check     # vet + test + build
-task smoke     # rm -rf chunks && run CLI on test.md && list output
-task roundtrip # CLI-Split von test.md + Merge zurück (Roundtrip-Check in der Konsole)
-task install   # go install -> $GOBIN (~/go/bin) – global `mcp-md-splitter` (Basis für .mcp.json)
-task clean     # rm -rf bin chunks
+task check      # vet + test + build. Run this before claiming anything works.
+task build      # -> bin/mcp-md-splitter (ldflags injects VERSION into main.version)
+task test       # go test -v -count=1 ./...  — hermetic: no network, no containers
+task roundtrip  # split test.md, merge it back, fail unless byte-identical
+task smoke      # CLI smoke test on the test.md fixture
+task install    # go install -> $GOBIN, so `mcp-md-splitter` is on PATH for MCP clients
 
-# Plain Go
-go build -o bin/mcp-md-splitter ./cmd/mcp-md-splitter
-go test -v ./...
+task i18n           # translate README.md into every language in LANGS
+task i18n:glossary  # build glossary.json for languages that have none
+task i18n:check     # per language: is the translation still current?
 ```
 
-`test.md` is a fixture; `chunks/` and `bin/` are generated artifacts (currently present; no `.gitignore`). Don't treat stale `chunks/` output as input.
+The `i18n` tasks need `MDSPLIT_LLM_URL` and `MDSPLIT_LLM_MODEL`. `test.md` is a
+fixture. `bin/`, `chunks/`, `i18n/*/*-part-*.md` and merge output are generated
+and gitignored; `i18n/*/glossary.json` is **not**, because it holds reviewed
+decisions.
 
 ## Structure
 
 ```
-cmd/mcp-md-splitter/main.go   # entrypoint: flags (cli / merge) + version var
-cmd/mcp-md-splitter/cli.go    # runCLIMode, TranslationIndex (file export mode)
-cmd/mcp-md-splitter/merge.go  # runMergeMode: Rückweg, liest index.json (Fallback: Glob *-part-*.md)
-cmd/mcp-md-splitter/mcp.go    # runMCPMode (stdio MCP server: split_markdown, merge_chunks)
-.mcp.json                     # client registration (md-splitter)
-internal/split/html.go        # HTML tag maps + isHTMLElementLine / htmlLineDelta
-internal/split/extract.go     # block regexes + ExtractBlocks (atomic-block parser)
-internal/split/pack.go        # PackChunks, Split, SplitFile (chunk packing + API)
-internal/split/join.go        # Normalize, Join, MergeFiles (Rückweg-Logik, kanonisch)
-internal/split/block_test.go  # block-/pack-Tests + TestSplitFile_RoundTrip, TestFullSplit_testMd
-internal/split/join_test.go   # Roundtrip- & Normalization-Tests (TestRoundtrip_*)
-VERSION                       # 1.1.0 (injected via -ldflags "-X main.version=...")
+cmd/mcp-md-splitter/
+  main.go        flags for all six modes; sets meta.Version
+  cli.go         runCLIMode - split and write
+  merge.go       runMergeMode, runCheckMode, roundtripVerdict
+  translate.go   runTranslateMode - the CLI translation loop
+  glossary.go    runGlossaryMode
+  mcp.go         the stdio server and its seven tool handlers
+internal/split/
+  block.go       Block{Text,Gap,Kind,Level} + render/rangeSize
+  extract.go     ExtractBlocks - the atomic-block parser
+  pack.go        groupBlocks, packRanges, SplitDoc, SplitFile
+  join.go        Canonical, Normalize, JoinGaps, MergeFilesGaps
+  html.go        tag maps, htmlLineDelta, htmlOpensBlock, stripInline
+  verify.go      VerifyStructure - is this a translation or damage?
+internal/job/
+  job.go         Manifest, Provenance, chunk paths, jobId registry
+  stamp.go       YAML front-matter stamping (merges, never prepends)
+internal/llm/    OpenAI-compatible client; chat and completions transports
+internal/translate/
+  translate.go   Options, Part - dispatches on mode
+  blocks.go      the block-mode planner, placeholder protect/restore
+  chunkmask.go   chunk-mode masking of code and protected spans
+internal/glossary/
+  extract.go     Candidates - terminology found without a model
+  build.go       one request, tolerant JSON parse, File load/save
+internal/meta/   tool name, URL and version, in one place
 ```
-
-Rückweg: CLI `-merge -dir chunks/ [-out X.md]` → `runMergeMode` → `split.MergeFiles(paths)` → `Join` → `Normalize`. Roundtrip-Garantie ist **kanonisch** (`Normalize(merged) == Normalize(orig)`), kein Byte-for-Byte-Vergleich.
 
 ## Architecture
 
-Two-phase pipeline in `internal/split`:
+**Splitting is two phases.** `ExtractBlocks` parses Markdown line by line into
+atomic blocks, each carrying its exact text, the blank-line `Gap` that followed
+it, and its `Kind`. `groupBlocks` then bonds what must not be separated — blocks
+with no blank line between them, and a heading with its section. `packRanges`
+fills chunks from those groups, preferring a cut before a heading once the chunk
+has substance, so the size is a **soft** budget. `SplitDoc` returns
+`Doc{Chunks, Gaps}`; `JoinGaps` is its exact inverse.
 
-1. `ExtractBlocks(content string) []string` — parses Markdown line-by-line into **atomic blocks**: code fences (open fence to closing fence, never split), table row groups (consecutive `|...|` lines), lists (item + indented continuation, terminated by blank line / heading / fence / table row), HTML blocks (multi-line `<div>`, `<table>` etc. tracked via a tag stack), headings (own block, preferred split point), and prose paragraphs.
-2. `PackChunks(blocks []string, maxSize int) []string` — greedy packing: append a block to the current chunk only if it still fits in `maxSize` (byte length incl. separator); otherwise start a new chunk. No block is ever split across chunks; oversized atomic blocks emit a `> 2x Ziel` warning to stderr.
+**Translating is one isolated request per piece.** No history, ever — that is
+what keeps the context flat. Block mode sends only prose fragments and
+reproduces code, HTML, bullets, pipes and indentation mechanically. Chunk mode
+sends a whole part with code and protected spans replaced by `⟦n⟧` sentinels.
+Before anything is stored: every sentinel must return exactly once,
+`finish_reason` must be `stop`, and `VerifyStructure` must find the source's
+shape. A part that fails is not stored and stays open.
 
-`SplitFile(path string, maxSize int) ([]string, error)` wraps `os.ReadFile` + `Split` — the only function with I/O.
+**The glossary is built before translating and then frozen.** Candidates are
+found without a model; the list is translated in a single request into a
+`glossary.json` a person edits.
 
-- CLI (`runCLIMode`) writes `<sourceDir>/chunks/<base>-part-NN.<ext>` (zero-padded 2-digit index) plus `chunks/index.json` (`TranslationIndex`, fields `source_file`, `total_parts`, `chunks`). MCP mode: `split_markdown` returns the full concatenated chunks as one text result (no file writes); `merge_chunks` is the Rückweg – reassembles from a `chunks/` dir and reports the roundtrip check.
-- Merge (`runMergeMode`) resolves chunk paths from `chunks/index.json` (relative to cwd OR to the parent of the chunks dir) with a `*-part-*.md` glob fallback; writes `<source>.merged` by default.
-- Chunk budget checks use byte length of the joined string, not rune/character count — German/emoji-heavy content will differ from CLI display output.
+## Conventions
 
-## Gotchas / project-specific conventions
+- **Everything a user or a model reads is English**: CLI output, error
+  messages, flag help, MCP tool descriptions. Code comments and test failure
+  messages are **German**. That split is deliberate — keep it.
+- Error strings follow Go convention: lowercase, no trailing punctuation,
+  wrapped verbs (`fmt.Errorf("read manifest: %w", err)`).
+- No Markdown AST library, on purpose. An AST would have to be lowered back to
+  source to cut on, and preserving the source bytes exactly is what the
+  round-trip contract rests on. `go mod tidy` is expected to stay clean; CI
+  checks it.
+- Comments explain **why**, not what. The reasons in this file and in the
+  commit log are the record of what went wrong before; do not paraphrase them
+  away.
+- Chunk budgets count bytes, not runes. German and CJK content will differ from
+  a character count.
 
-- **Language**: all user-facing strings (CLI output, error messages) are **German**; code comments and type names mix German and English. Keep this split.
-- **`goldmark` is in `go.mod` but unused** (`gopls go mod tidy` warns). It is reserved for planned AST-based splitting. Do not "fix" the warning by adding goldmark usage, and do not run `go mod tidy` unless the user asks (it would drop the dep).
-- **Regex quirks**: `listRx` reads as `^\s*[-*+]\s+` *or* `\s*\d+\.\s+` anywhere — it will match stray `1.` inside prose lines; list/table blocks also terminate by lookahead of the next line, not trailing state.
-- **HTML block detection runs per line** with a tag stack; a multi-line `<div>` body stays open while the stack is non-empty.
-- **Testing convention**: chunk boundaries are sensitive (off-by-one in size accounting is easy to miss). Any change must pass `task check` and, for chunker changes, `task smoke` — diff `chunks/*.md` against a saved copy.
-- gopls has open style hints (`slices.Contains`, unused param `blocks` in `bufIsNotList`) — the code does not follow modern-go style consistently; don't mass-refactor.
+## Testing
 
-## Style
-
-- German comments at function/section level, gofmt (tabs), stdlib + mcp-gol. Match existing tone; do not add English boilerplate comments.
-- Library code lives in `internal/split` and is exposed via exported functions (`ExtractBlocks`, `PackChunks`, `Split`, `SplitFile`) — keep internals unexported in that package.
+- `task test` is hermetic. The network path is covered against an `httptest`
+  server in `internal/llm`; nothing reaches out.
+- `TestRoundtrip_ProjectDocs` runs the splitter over every `*.md` in the repo
+  root at three budgets and asserts byte-exactness — the cheapest real corpus
+  available without leaving the repo.
+- Chunk boundaries are sensitive; an off-by-one in size accounting is easy to
+  miss. Any chunker change must pass `task check` and `task roundtrip`.
 
 ## Invariants worth not breaking
 
