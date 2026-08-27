@@ -2,6 +2,8 @@ package main
 
 import (
 	"flag"
+
+	"mcp-md-splitter/internal/llm"
 )
 
 // version ist die Server-Version für MCP-Clients; wird bei Bedarf via ldflags gesetzt.
@@ -15,14 +17,35 @@ func main() {
 	chunksDir := flag.String("dir", "", "chunk directory containing index.json (merge mode)")
 	outFile := flag.String("out", "", "merge output path (default: <source>.merged)")
 	target := flag.String("target", "", "suffix for edited parts, e.g. de (default: out)")
+	language := flag.String("lang", "", "target language for -translate, e.g. de or German")
+	translateMode := flag.Bool("translate", false, "translate every open part of a split via the configured LLM")
+	mode := flag.String("mode", "block", "translation granularity: block (code never sent, structure guaranteed) or chunk (whole chunk, needs an instruction-following model)")
+
+	// Endpoint settings are process configuration, never tool arguments: a
+	// token passed through a tool call would end up in the conversation
+	// transcript, and a caller-chosen URL would turn a tool that reads local
+	// files into an exfiltration channel.
+	env := llm.ConfigFromEnv()
+	llmURL := flag.String("llm-url", env.BaseURL, "OpenAI-compatible base URL (env MDSPLIT_LLM_URL; default "+llm.DefaultURL+")")
+	llmModel := flag.String("llm-model", env.Model, "model name (env MDSPLIT_LLM_MODEL)")
+	llmTimeout := flag.Duration("llm-timeout", env.Timeout, "per-request timeout (env MDSPLIT_LLM_TIMEOUT)")
 	flag.Parse()
 
+	cfg := llm.Config{
+		BaseURL: *llmURL,
+		Model:   *llmModel,
+		Token:   env.Token, // deliberately env-only: never a flag, never an argument
+		Timeout: *llmTimeout,
+	}
+
 	switch {
+	case *translateMode:
+		runTranslateMode(*chunksDir, cfg, *language, *mode)
 	case *mergeMode:
 		runMergeMode(*chunksDir, *outFile)
 	case *cliMode:
 		runCLIMode(*filePath, *chunkSize, *target)
 	default:
-		runMCPMode()
+		runMCPMode(cfg)
 	}
 }

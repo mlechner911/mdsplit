@@ -2,13 +2,16 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 
 	"mcp-md-splitter/internal/job"
+	"mcp-md-splitter/internal/llm"
 	"mcp-md-splitter/internal/split"
+	"mcp-md-splitter/internal/translate"
 
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
@@ -51,8 +54,14 @@ func resolveJob(req mcp.CallToolRequest) (*job.Manifest, error) {
 	return nil, fmt.Errorf("pass either jobId (from split_markdown) or chunksDir")
 }
 
+// llmCfg holds the endpoint configuration for the whole server process. It is
+// set once at startup and never taken from a tool argument - see package llm
+// for why.
+var llmCfg llm.Config
+
 // runMCPMode startet den stdio-MCP-Server.
-func runMCPMode() {
+func runMCPMode(cfg llm.Config) {
+	llmCfg = cfg
 	s := server.NewMCPServer("Markdown-Splitter", version,
 		server.WithToolCapabilities(true),
 		server.WithInputSchemaValidation(),
@@ -63,8 +72,16 @@ func runMCPMode() {
 	s.AddTool(putChunkTool(), putChunkHandler)
 	s.AddTool(jobStatusTool(), jobStatusHandler)
 	s.AddTool(mergeTool(), mergeHandler)
+	if llmCfg.Ready() {
+		s.AddTool(translateChunkTool(), translateChunkHandler)
+	}
 
 	fmt.Fprintln(os.Stderr, "markdown-splitter MCP server ready ("+version+")")
+	if llmCfg.Ready() {
+		fmt.Fprintln(os.Stderr, "translate_chunk enabled: "+llmCfg.Describe())
+	} else {
+		fmt.Fprintln(os.Stderr, "translate_chunk disabled: set MDSPLIT_LLM_MODEL (and MDSPLIT_LLM_URL) to enable it")
+	}
 	if err := server.ServeStdio(s); err != nil {
 		fmt.Fprintf(os.Stderr, "server error: %v\n", err)
 		os.Exit(1)
@@ -331,4 +348,97 @@ func joinInts(ns []int) string {
 		parts[i] = fmt.Sprint(n)
 	}
 	return strings.Join(parts, ", ")
+}
+
+// --- translate_chunk -----------------------------------------------------
+
+func translateChunkTool() mcp.Tool {
+	return mcp.NewTool("translate_chunk",
+		mcp.WithDescription(
+			"Translate exactly one part of a split using the server's configured LLM endpoint, "+
+				"and store the result. The chunk text and the translation never pass through this "+
+				"conversation - only a one-line status comes back - so translating a 500-part "+
+				"document costs the same context as translating a 5-part one. "+
+				"The reply is checked against the source structure before it is stored: same blocks "+
+				"in the same order, code fences reproduced verbatim. A drifted reply is rejected and "+
+				"the part stays open. Call this once per part, then merge_chunks."),
+		mcp.WithString("jobId", mcp.Required(),
+			mcp.Description("job ID returned by split_markdown")),
+		mcp.WithNumber("part", mcp.Required(),
+			mcp.Description("part number, 1-based")),
+		mcp.WithString("language",
+			mcp.Description("target language, e.g. \"de\" or \"German\"; defaults to the language recorded at split time")),
+		mcp.WithString("instruction",
+			mcp.Description("replaces the default translation task, e.g. \"Rewrite the Markdown below in plain English.\"")),
+		mcp.WithString("mode",
+			mcp.Description("\"block\" (default) sends only prose fragments and reproduces code, tables and markers mechanically - a model cannot damage what it never receives. \"chunk\" sends the whole part at once: more context per request, but it needs a model that follows instructions.")),
+	)
+}
+
+func translateChunkHandler(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	m, err := resolveJob(req)
+	if err != nil {
+		return mcp.NewToolResultError(err.Error()), nil
+	}
+	n := argInt(req, "part", 0)
+
+	lang := argString(req, "language")
+	if lang == "" {
+		lang = m.Language
+	}
+	if lang == "" {
+		lang = m.Target
+	}
+	instruction := argString(req, "instruction")
+	if lang == "" && instruction == "" {
+		return mcp.NewToolResultError("no target language - pass language, or set it when splitting"), nil
+	}
+
+	mode := translate.Mode(argString(req, "mode"))
+	if mode == "" {
+		mode = translate.ModeBlock
+	}
+	if mode != translate.ModeBlock && mode != translate.ModeChunk {
+		return mcp.NewToolResultError(fmt.Sprintf("unknown mode %q - use \"block\" or \"chunk\"", mode)), nil
+	}
+
+	res, err := translate.Part(ctx, llm.New(llmCfg), m, n, translate.Options{
+		Language:    lang,
+		Instruction: instruction,
+		Glossary:    m.Glossary,
+		Mode:        mode,
+	})
+	if err != nil {
+		var se *split.StructureError
+		if errors.As(err, &se) {
+			b := &strings.Builder{}
+			fmt.Fprintf(b, "Part %d was NOT stored - the reply does not match the source structure:\n", n)
+			for _, r := range se.Reasons {
+				fmt.Fprintf(b, "  - %s\n", r)
+			}
+			b.WriteString("The part is still open; call translate_chunk again to retry it.")
+			return mcp.NewToolResultError(b.String()), nil
+		}
+		return mcp.NewToolResultError(err.Error()), nil
+	}
+
+	done, missing := m.Progress()
+	b := &strings.Builder{}
+	fmt.Fprintf(b, "Translated part %d/%d in %s mode (%d -> %d chars", n, m.TotalParts, res.Mode, res.InChars, res.OutChars)
+	if res.Requests > 0 && res.Mode == translate.ModeBlock {
+		fmt.Fprintf(b, ", %d fragments sent", res.Requests)
+	}
+	if res.Kept > 0 {
+		fmt.Fprintf(b, ", %d kept in the source language", res.Kept)
+	}
+	if res.Glossary > 0 {
+		fmt.Fprintf(b, ", %d glossary terms applied", res.Glossary)
+	}
+	fmt.Fprintf(b, "). Structure verified. Progress: %d/%d\n", done, m.TotalParts)
+	if len(missing) > 0 {
+		fmt.Fprintf(b, "Next: translate_chunk(jobId=%q, part=%d)\n", m.ID, missing[0])
+	} else {
+		fmt.Fprintf(b, "All parts done - call merge_chunks(jobId=%q).\n", m.ID)
+	}
+	return mcp.NewToolResultText(b.String()), nil
 }
