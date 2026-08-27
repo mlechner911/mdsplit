@@ -209,12 +209,25 @@ returns `Doc{Chunks, Gaps}`; `JoinGaps(chunks, gaps)` is the exact inverse.
 
 ## Development Notes
 
-- User-facing CLI strings and error messages are German; code identifiers mix German and English — keep this split.
-- `github.com/yuin/goldmark` is in `go.mod` for planned AST-based splitting but currently unused; do not remove it with `go mod tidy`.
+- **Everything a user or a model reads is English**: CLI output, error
+  messages, flag help and the MCP tool descriptions. Code comments and test
+  failure messages are German — that split is deliberate, so keep it.
+- No Markdown AST library. The parser is line-based on purpose: an AST would
+  have to be lowered back to source to cut on, and preserving the source bytes
+  exactly is the one thing the round-trip contract depends on.
 - `TestRoundtrip_ProjectDocs` runs the splitter over every `*.md` in the repo
   root at three budgets and asserts byte-exactness — the cheapest real corpus
   available without leaving the repo.
 
+## Continuous integration
+
+[`.github/workflows/ci.yml`](.github/workflows/ci.yml) runs on every push:
+`gofmt`/`go vet`/`go mod tidy` once, the test suite on Linux, macOS and Windows
+(the splitter is mostly path handling, and the job registry lives in
+`os.UserCacheDir()`), and a round-trip job that splits and merges every
+Markdown file in the repo at three budgets, failing unless each one comes back
+byte-identical.
+
 ## License
 
-MIT © 2025 Michael Lechner — see [LICENSE](LICENSE).
+MIT © 2026 Michael Lechner — see [LICENSE](LICENSE).

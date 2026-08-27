@@ -1,0 +1,101 @@
+name: CI
+
+on:
+  push:
+    branches: [master, main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  # Formatting, vetting and the dependency check run once — they are
+  # platform-independent and would only produce duplicate noise in a matrix.
+  lint:
+    name: gofmt + vet
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: gofmt
+        run: |
+          unformatted="$(gofmt -l ./cmd ./internal)"
+          if [ -n "$unformatted" ]; then
+            echo "::error::these files are not gofmt'd:"
+            echo "$unformatted"
+            gofmt -d ./cmd ./internal
+            exit 1
+          fi
+
+      - name: go vet
+        run: go vet ./...
+
+      - name: go.mod is tidy
+        run: |
+          go mod tidy
+          git diff --exit-code go.mod go.sum
+
+  # The splitter is all path handling and file layout, and the job registry
+  # sits in os.UserCacheDir() — the places where Linux-only testing lies.
+  test:
+    name: test (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: go test
+        run: go test -count=1 ./...
+
+      - name: go build
+        run: go build ./...
+
+  # Proves the shipped binary still does the round-trip it promises, rather
+  # than only the library the unit tests reach.
+  roundtrip:
+    name: CLI round-trip
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: build
+        run: go build -ldflags "-X main.version=$(cat VERSION)" -o bin/mcp-md-splitter ./cmd/mcp-md-splitter
+
+      - name: split and merge test.md
+        run: |
+          ./bin/mcp-md-splitter -cli -file test.md -size 2000
+          ./bin/mcp-md-splitter -merge -dir chunks/ | tee merge.log
+          grep -q "round-trip: byte-identical to the source" merge.log
+
+      - name: round-trip every Markdown file in the repo
+        run: |
+          fail=0
+          for f in $(git ls-files '*.md'); do
+            for size in 500 2000 8000; do
+              rm -rf /tmp/rt && mkdir -p /tmp/rt
+              cp "$f" /tmp/rt/doc.md
+              ./bin/mcp-md-splitter -cli -file /tmp/rt/doc.md -size $size > /dev/null
+              if ! ./bin/mcp-md-splitter -merge -dir /tmp/rt/chunks/ \
+                   | grep -q "round-trip: byte-identical to the source"; then
+                echo "::error file=$f::round-trip not byte-exact at size $size"
+                fail=1
+              fi
+            done
+          done
+          exit $fail
