@@ -193,3 +193,69 @@ func TestProtect_AltTextStaysTranslatable(t *testing.T) {
 		t.Errorf("Bildpfad ist ungeschützt: %q", masked)
 	}
 }
+
+// TestFitFragment schließt das Loch, durch das ein Modell im Block-Modus doch
+// Struktur einschleusen konnte: eine Antwort mit Zeilenumbruch oder mit einem
+// führenden Marker verschiebt beim Neuparsen alle folgenden Blöcke.
+func TestFitFragment(t *testing.T) {
+	t.Run("Umbruch in Einzeiler wird geglättet", func(t *testing.T) {
+		got, err := fitFragment("verbose output", "ausführliche\nAusgabe")
+		if err != nil {
+			t.Fatalf("unerwarteter Fehler: %v", err)
+		}
+		if got != "ausführliche Ausgabe" {
+			t.Errorf("got %q", got)
+		}
+	})
+	t.Run("Umbruch bleibt, wenn die Quelle mehrzeilig war", func(t *testing.T) {
+		got, err := fitFragment("a\nb", "eins\nzwei")
+		if err != nil || got != "eins\nzwei" {
+			t.Errorf("got %q / %v", got, err)
+		}
+	})
+	t.Run("neuer Listenmarker wird abgelehnt", func(t *testing.T) {
+		if _, err := fitFragment("some prose", "- ein Punkt"); err == nil {
+			t.Error("führender Listenmarker wurde nicht erkannt")
+		}
+	})
+	t.Run("neue Überschrift wird abgelehnt", func(t *testing.T) {
+		if _, err := fitFragment("some prose", "## Titel"); err == nil {
+			t.Error("führende Überschrift wurde nicht erkannt")
+		}
+	})
+	t.Run("neuer Zaun wird abgelehnt", func(t *testing.T) {
+		if _, err := fitFragment("some prose", "```go"); err == nil {
+			t.Error("führender Zaun wurde nicht erkannt")
+		}
+	})
+	t.Run("Quelle war schon strukturell", func(t *testing.T) {
+		if _, err := fitFragment("| a |", "| b |"); err != nil {
+			t.Errorf("unerwarteter Fehler: %v", err)
+		}
+	})
+}
+
+// TestTranslatable_IdentifiersAreNotProse deckt den Fall ab, an dem
+// TranslateGemma das Flag "-out" zu "– aus" gemacht hat: nach Buchstabenzahl
+// sieht ein Flag wie ein Wort aus, ist aber ein Bezeichner.
+func TestTranslatable_IdentifiersAreNotProse(t *testing.T) {
+	notProse := []string{
+		"-out", "-v", "--verbose", "--dry-run", "-size",
+		"./cmd/tool", "internal/split", "config.yaml", "os.ReadFile",
+		"~/go/bin", "cmd/mcp-md-splitter/",
+	}
+	for _, s := range notProse {
+		if translatable(s) {
+			t.Errorf("translatable(%q) = true, erwartet false", s)
+		}
+	}
+	prose := []string{
+		"verbose output", "output path", "the tool never writes outside",
+		"Run go install for details", "Flag",
+	}
+	for _, s := range prose {
+		if !translatable(s) {
+			t.Errorf("translatable(%q) = false, erwartet true", s)
+		}
+	}
+}

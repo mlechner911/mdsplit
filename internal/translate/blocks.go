@@ -45,13 +45,26 @@ var (
 
 	// letterRx decides whether a fragment carries language at all.
 	letterRx = regexp.MustCompile(`\p{L}{2,}`)
+
+	// flagRx catches a bare command-line flag. "-out" reads like a word to a
+	// letter count, and a translator duly turned it into "– aus"; anything
+	// shaped like a flag is an identifier, not prose.
+	flagRx = regexp.MustCompile(`^-{1,2}[\p{L}\d][\p{L}\d_-]*$`)
+
+	// pathRx catches a bare path or a dotted identifier: ./cmd/tool,
+	// internal/split, config.yaml, os.ReadFile.
+	pathRx = regexp.MustCompile(`^[.~]?/?[\p{L}\d_.-]+(?:[/.][\p{L}\d_.-]+)+/?$`)
 )
 
 // translatable reports whether a fragment contains prose once the protected
 // spans are removed. "-v", "`$GOBIN`" and "1.2.0" do not, and sending them to a
 // translator can only make them worse.
 func translatable(s string) bool {
-	return letterRx.MatchString(protectRx.ReplaceAllString(s, ""))
+	rest := strings.TrimSpace(protectRx.ReplaceAllString(s, ""))
+	if flagRx.MatchString(rest) || pathRx.MatchString(rest) {
+		return false
+	}
+	return letterRx.MatchString(rest)
 }
 
 // protect swaps the untouchable spans for sentinels, so the sentence around
@@ -258,7 +271,10 @@ func byBlocks(ctx context.Context, c *llm.Client, chunk string, opts Options, st
 		} else {
 			st.reused++
 		}
-		restored, err := restore(out, tokens)
+		fitted, err := fitFragment(p.text, out)
+		if err == nil {
+			out, err = restore(fitted, tokens)
+		}
 		if err != nil {
 			// Ein verlorener Platzhalter macht die Antwort unbrauchbar, nicht
 			// nur unschön - dann bleibt das Original stehen.
@@ -266,9 +282,30 @@ func byBlocks(ctx context.Context, c *llm.Client, chunk string, opts Options, st
 			b.WriteString(p.text)
 			continue
 		}
-		b.WriteString(restored)
+		b.WriteString(out)
 	}
 	return b.String(), nil
+}
+
+var structuralStartRx = regexp.MustCompile("^[ \t]*(?:#{1,6}[ \t]|[-*+][ \t]|\\d{1,9}[.)][ \t]|>|\\||`{3,}|~{3,})")
+
+// fitFragment forces a reply back into the shape of the fragment it replaces.
+//
+// Block mode keeps every marker literal, but a reply can still smuggle
+// structure in through the text itself. A fragment that was one line - a table
+// cell, a list item, a heading - must stay one line: a stray newline does not
+// merely look wrong, it re-parses into a different block and shifts every block
+// after it. And a reply that begins with "- " or "## " turns a paragraph into a
+// list or a heading. Neither is a translation error the reader would notice
+// later; both silently change the document.
+func fitFragment(src, out string) (string, error) {
+	if !strings.Contains(src, "\n") && strings.Contains(out, "\n") {
+		out = strings.Join(strings.Fields(strings.ReplaceAll(out, "\n", " ")), " ")
+	}
+	if structuralStartRx.MatchString(out) && !structuralStartRx.MatchString(src) {
+		return "", fmt.Errorf("reply starts a new Markdown construct the source did not: %.40q", out)
+	}
+	return out, nil
 }
 
 // stats counts what happened during one chunk.
