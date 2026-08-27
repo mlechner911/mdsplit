@@ -259,3 +259,31 @@ func TestTranslatable_IdentifiersAreNotProse(t *testing.T) {
 		}
 	}
 }
+
+// TestRestore_TolerantOfSpacing: ein Modell, das ⟦ 0 ⟧ schreibt, hat den
+// Platzhalter nicht verloren - das soll die Antwort nicht kosten.
+func TestRestore_TolerantOfSpacing(t *testing.T) {
+	in := "Run `go install` now."
+	masked, tokens := protect(in)
+	spaced := strings.ReplaceAll(masked, "⟦0⟧", "⟦ 0 ⟧")
+	back, err := restore(spaced, tokens)
+	if err != nil {
+		t.Fatalf("Leerzeichen im Platzhalter wurden nicht toleriert: %v", err)
+	}
+	if !strings.Contains(back, "`go install`") {
+		t.Errorf("Inhalt nicht wiederhergestellt: %q", back)
+	}
+}
+
+// TestRestore_ErrorNamesTheDamage: die Meldung muss sagen, wie viele
+// Platzhalter überlebt haben - sonst ist der Fehlschlag nicht diagnostizierbar.
+func TestRestore_ErrorNamesTheDamage(t *testing.T) {
+	_, tokens := protect("Run `a` and `b` and `c`.")
+	_, err := restore("Nur ⟦0⟧ blieb übrig.", tokens)
+	if err == nil {
+		t.Fatal("Fehler erwartet")
+	}
+	if !strings.Contains(err.Error(), "of 3 sentinels") {
+		t.Errorf("Meldung nennt die Bilanz nicht: %v", err)
+	}
+}

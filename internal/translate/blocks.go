@@ -43,6 +43,11 @@ var (
 			`|\[\^[^\]]+\]` + // [^1] footnote marker
 			`|</?[a-zA-Z][^>]*>`) // inline HTML tag, e.g. <img src=...>, <br>
 
+	// placeholderRx finds a sentinel even when the model put spaces inside the
+	// brackets, which they do often enough to be worth absorbing rather than
+	// rejecting a whole reply over.
+	placeholderRx = regexp.MustCompile(`⟦\s*(\d+)\s*⟧`)
+
 	// letterRx decides whether a fragment carries language at all.
 	letterRx = regexp.MustCompile(`\p{L}{2,}`)
 
@@ -89,10 +94,15 @@ func protectInto(s string, tokens *[]string) string {
 // once; anything else means the model dropped or duplicated one, and the reply
 // is unusable rather than merely imperfect.
 func restore(s string, tokens []string) (string, error) {
+	if len(tokens) == 0 {
+		return s, nil
+	}
+	s = placeholderRx.ReplaceAllString(s, "⟦$1⟧")
 	for i, t := range tokens {
 		ph := fmt.Sprintf("⟦%d⟧", i)
 		if n := strings.Count(s, ph); n != 1 {
-			return "", fmt.Errorf("placeholder %s came back %d times, expected once", ph, n)
+			return "", fmt.Errorf("placeholder %s came back %d times, expected once (%d of %d sentinels survived)",
+				ph, n, len(placeholderRx.FindAllString(s, -1)), len(tokens))
 		}
 		s = strings.Replace(s, ph, t, 1)
 	}
