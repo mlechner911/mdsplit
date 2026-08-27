@@ -367,3 +367,40 @@ func TestFitFragment_RejectsRunawayLength(t *testing.T) {
 		t.Errorf("normale Längenzunahme abgelehnt: %v", err)
 	}
 }
+
+// TestRestore_RejectsInventedMarker deckt die Lücke ab, die der Testlauf am
+// eigenen README zeigte: hat ein Fragment keine geschützten Spans, ist die
+// Tokenliste leer - und ein vom Modell erfundener ⟦1⟧ rutschte ungeprüft ins
+// Dokument, weil es nichts zu ersetzen gab.
+func TestRestore_RejectsInventedMarker(t *testing.T) {
+	if _, err := restore("⟦1⟧ Es ist erlaubt, Ausnahmen zu machen.", nil); err == nil {
+		t.Error("erfundener Marker ohne Tokenliste wurde nicht erkannt")
+	}
+	_, tokens := protect("Run `go install` now.")
+	if _, err := restore("Führe ⟦0⟧ aus. ⟦5⟧", tokens); err == nil {
+		t.Error("Marker außerhalb der Tokenliste wurde nicht erkannt")
+	}
+	// Ohne Marker und ohne Tokens ist alles in Ordnung.
+	got, err := restore("ein ganz normaler Satz", nil)
+	if err != nil || got != "ein ganz normaler Satz" {
+		t.Errorf("got %q / %v", got, err)
+	}
+}
+
+// TestProtect_LiteralSentinelInSource: dieses README schreibt selbst über ⟦n⟧.
+// Ein ziffernförmiges Vorkommen in der Quelle muss geschützt werden, sonst
+// kollidiert es mit unserer eigenen Nummerierung.
+func TestProtect_LiteralSentinelInSource(t *testing.T) {
+	in := "Code is replaced by ⟦7⟧ before sending."
+	masked, tokens := protect(in)
+	if len(tokens) != 1 || tokens[0] != "⟦7⟧" {
+		t.Fatalf("literaler Marker nicht geschützt: %v", tokens)
+	}
+	if strings.Contains(masked, "⟦7⟧") {
+		t.Errorf("Quellmarker steht noch im Prompt: %q", masked)
+	}
+	back, err := restore(masked, tokens)
+	if err != nil || back != in {
+		t.Errorf("Roundtrip: %q / %v", back, err)
+	}
+}

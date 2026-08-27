@@ -28,8 +28,10 @@ func maskChunk(chunk string) (string, []string) {
 			fmt.Fprintf(&b, "⟦%d⟧", len(tokens)-1)
 		case split.List:
 			// Ein Zaun im Listenpunkt ist ebenso Code, steckt aber in einem
-			// Listenblock - er muss genauso verschwinden.
-			b.WriteString(protectInto(maskFences(blk.Text, &tokens), &tokens))
+			// Listenblock - er muss genauso verschwinden. Zaun-Maskierung und
+			// Inline-Schutz laufen dabei in einem Durchgang: nacheinander
+			// würde der zweite die Marker des ersten erneut einsammeln.
+			b.WriteString(maskFences(blk.Text, &tokens))
 		default:
 			b.WriteString(protectInto(blk.Text, &tokens))
 		}
@@ -40,14 +42,17 @@ func maskChunk(chunk string) (string, []string) {
 	return b.String(), tokens
 }
 
-// maskFences replaces every fenced run inside a text with a sentinel.
+// maskFences replaces every fenced run inside a text with a sentinel, and
+// protects the inline spans of everything around it. Both in one pass: running
+// the inline protection afterwards would collect the fence sentinels this just
+// inserted and renumber them.
 func maskFences(text string, tokens *[]string) string {
 	lines := strings.Split(text, "\n")
 	var out []string
 	for i := 0; i < len(lines); i++ {
 		marker, ok := fenceMarker(lines[i])
 		if !ok {
-			out = append(out, lines[i])
+			out = append(out, protectInto(lines[i], tokens))
 			continue
 		}
 		start := i

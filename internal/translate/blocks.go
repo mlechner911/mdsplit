@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"regexp"
+	"strconv"
 	"strings"
 
 	"github.com/mlechner911/mdsplit/internal/llm"
@@ -41,7 +42,8 @@ var (
 			`|\]\([^)]*\)` + // ](target) for links and images
 			`|\]\[[^\]]*\]` + // ][ref] for reference links
 			`|\[\^[^\]]+\]` + // [^1] footnote marker
-			`|</?[a-zA-Z][^>]*>`) // inline HTML tag, e.g. <img src=...>, <br>
+			`|</?[a-zA-Z][^>]*>` + // inline HTML tag, e.g. <img src=...>, <br>
+			`|⟦\s*\d+\s*⟧`) // a literal sentinel in the source - this README has some
 
 	// placeholderRx finds a sentinel even when the model put spaces inside the
 	// brackets, which they do often enough to be worth absorbing rather than
@@ -94,19 +96,43 @@ func protectInto(s string, tokens *[]string) string {
 // once; anything else means the model dropped or duplicated one, and the reply
 // is unusable rather than merely imperfect.
 func restore(s string, tokens []string) (string, error) {
-	if len(tokens) == 0 {
-		return s, nil
-	}
 	s = placeholderRx.ReplaceAllString(s, "⟦$1⟧")
-	for i, t := range tokens {
-		ph := fmt.Sprintf("⟦%d⟧", i)
-		if n := strings.Count(s, ph); n != 1 {
-			return "", fmt.Errorf("placeholder %s came back %d times, expected once (%d of %d sentinels survived)",
-				ph, n, len(placeholderRx.FindAllString(s, -1)), len(tokens))
+
+	seen := map[int]int{}
+	for _, m := range placeholderRx.FindAllStringSubmatch(s, -1) {
+		i, err := strconv.Atoi(m[1])
+		if err != nil {
+			continue
 		}
-		s = strings.Replace(s, ph, t, 1)
+		seen[i]++
 	}
-	return s, nil
+	for i := range tokens {
+		if n := seen[i]; n != 1 {
+			return "", fmt.Errorf("placeholder ⟦%d⟧ came back %d times, expected once (%d of %d sentinels survived)",
+				i, n, len(seen), len(tokens))
+		}
+	}
+	// Ein Marker, den wir nicht gesetzt haben, ist erfunden. Ohne diese Prüfung
+	// rutscht er durch, sobald das Fragment selbst keine geschützten Spans hat:
+	// dann ist die Tokenliste leer und es gibt nichts zu ersetzen.
+	for i := range seen {
+		if i >= len(tokens) {
+			return "", fmt.Errorf("reply contains ⟦%d⟧, a marker we never sent - the model invented it", i)
+		}
+	}
+
+	// In einem Durchgang ersetzen: sequenzielles Replace würde eingesetzten
+	// Inhalt erneut abtasten und an einem darin enthaltenen Marker scheitern.
+	var bad error
+	out := placeholderRx.ReplaceAllStringFunc(s, func(m string) string {
+		i, err := strconv.Atoi(placeholderRx.FindStringSubmatch(m)[1])
+		if err != nil || i >= len(tokens) {
+			bad = fmt.Errorf("unresolvable marker %s", m)
+			return m
+		}
+		return tokens[i]
+	})
+	return out, bad
 }
 
 // planChunk decomposes a chunk into literal and translatable pieces.
