@@ -296,3 +296,37 @@ func TestResolveUserTemplate(t *testing.T) {
 		t.Errorf("eigene Vorlage verändert: %q", got)
 	}
 }
+
+// TestTranslateGemmaUserTemplate: dieselbe Anweisung, einmal als Gemma-Turn für
+// den Completions-Weg und einmal als reine User-Nachricht für Server, deren
+// Chat-Template eine annimmt. Die drei Zeilenumbrüche sind laut Model Card
+// bedeutsam ("two blank lines before the text to translate").
+func TestTranslateGemmaUserTemplate(t *testing.T) {
+	var got capture
+	srv := fakeEndpoint(t, 200, okChat, &got)
+	defer srv.Close()
+
+	c := New(Config{BaseURL: srv.URL, Model: "translategemma:27b", UserTemplate: "translategemma"})
+	if _, err := c.Ask(context.Background(), PromptData{
+		User: "never transmitted", SourceLang: "en", TargetLang: "de",
+		SourceLangName: "English", TargetLangName: "German",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	msgs, _ := got.body["messages"].([]any)
+	if len(msgs) != 1 {
+		t.Fatalf("erwartet eine Nachricht, bekommen %d", len(msgs))
+	}
+	content, _ := msgs[0].(map[string]any)["content"].(string)
+	for _, want := range []string{
+		"professional English (en) to German (de) translator",
+		"into German:\n\n\nnever transmitted",
+	} {
+		if !strings.Contains(content, want) {
+			t.Errorf("Anweisung ohne %q:\n%q", want, content)
+		}
+	}
+	if strings.Contains(content, "<start_of_turn>") {
+		t.Error("Turn-Marker gehören nicht in eine Chat-Nachricht - die setzt der Server")
+	}
+}

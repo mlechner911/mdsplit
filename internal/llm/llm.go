@@ -48,16 +48,27 @@ const (
 // Available fields: .System, .User, .SourceLang, .TargetLang.
 const DefaultPromptTemplate = "<start_of_turn>user\n{{.System}}\n\n{{.User}}<end_of_turn>\n<start_of_turn>model\n"
 
-// TranslateGemmaTemplate reproduces the instruction TranslateGemma's own chat
-// template builds, for use with the completions transport. One template covers
-// every language pair.
-const TranslateGemmaTemplate = "<start_of_turn>user\n" +
-	"You are a professional {{.SourceLangName}} ({{.SourceLang}}) to {{.TargetLangName}} ({{.TargetLang}}) " +
-	"translator. Your goal is to accurately convey the meaning and nuances of the original " +
-	"{{.SourceLangName}} text while adhering to {{.TargetLangName}} grammar, vocabulary, and cultural " +
-	"sensitivities.\nProduce only the {{.TargetLangName}} translation, without any additional " +
-	"explanations or commentary. Please translate the following {{.SourceLangName}} text into " +
-	"{{.TargetLangName}}:\n\n\n{{.User}}<end_of_turn>\n<start_of_turn>model\n"
+// translateGemmaInstruction is the request TranslateGemma is trained on, as
+// documented on its model card and in its own chat template. The three
+// newlines before the text are not cosmetic: the card calls out "two blank
+// lines before the text to translate".
+const translateGemmaInstruction = "You are a professional {{.SourceLangName}} ({{.SourceLang}}) to " +
+	"{{.TargetLangName}} ({{.TargetLang}}) translator. Your goal is to accurately convey the meaning " +
+	"and nuances of the original {{.SourceLangName}} text while adhering to {{.TargetLangName}} " +
+	"grammar, vocabulary, and cultural sensitivities.\nProduce only the {{.TargetLangName}} " +
+	"translation, without any additional explanations or commentary. Please translate the following " +
+	"{{.SourceLangName}} text into {{.TargetLangName}}:\n\n\n{{.User}}"
+
+// TranslateGemmaTemplate wraps that instruction in a Gemma turn, for the
+// completions transport - needed where the server's own chat template refuses
+// every request an OpenAI layer can build.
+const TranslateGemmaTemplate = "<start_of_turn>user\n" + translateGemmaInstruction +
+	"<end_of_turn>\n<start_of_turn>model\n"
+
+// TranslateGemmaUserTemplate is the same instruction as a plain user message,
+// for a server whose chat template does accept one - Ollama's packaging of the
+// model documents this shape as the caller's job rather than building it.
+const TranslateGemmaUserTemplate = translateGemmaInstruction
 
 // Gemma3TranslatorTemplate is the request format zongwei/gemma3-translator
 // prescribes. Its own system prompt is in the Modelfile and stays in force.
@@ -70,6 +81,8 @@ func ResolveUserTemplate(name string) string {
 		return ""
 	case "gemma3-translator":
 		return Gemma3TranslatorTemplate
+	case "translategemma":
+		return TranslateGemmaUserTemplate
 	default:
 		return name
 	}

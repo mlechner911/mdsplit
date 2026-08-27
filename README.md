@@ -340,11 +340,20 @@ mcp-md-splitter -translate -dir chunks/ -lang de \
   -llm-model zongwei/gemma3-translator:1b -llm-user-template gemma3-translator
 ```
 
-`-llm-user-template` takes a Go template with the same fields, or that
-shorthand. When it is set, **no system message is sent**: a caller shaping the
-message itself decides whether the rules belong in it. That is what makes a
-model with its own baked-in system prompt usable at all — a system message from
-us would replace it.
+`-llm-user-template` takes a Go template with the same fields, or a shorthand:
+`gemma3-translator` for the format above, `translategemma` for TranslateGemma's
+own instruction as a plain user message. When it is set, **no system message is
+sent**: a caller shaping the message itself decides whether the rules belong in
+it. That is what makes a model with its own baked-in system prompt usable at
+all — a system message from us would replace it.
+
+The same model can need either mechanism depending on who serves it.
+TranslateGemma's chat template refuses every OpenAI-shaped request in LM
+Studio, so there it needs `-llm-transport completions -llm-template
+translategemma`. Ollama's packaging documents the instruction as the caller's
+job instead, so there `-llm-user-template translategemma` is enough. Both
+render the same text, including the two blank lines before the passage that its
+model card calls out.
 
 ### Models whose chat template will not take our request
 
