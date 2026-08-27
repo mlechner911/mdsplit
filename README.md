@@ -69,6 +69,10 @@ model, but nothing in it is specific to either.
 
 - Go 1.25+
 - Optional: [taskfile](https://taskfile.dev/) (`go install github.com/go-task/task/v3/cmd/task@latest`)
+- Optional, for translation: any OpenAI-compatible endpoint — a local
+  [Ollama](https://ollama.com/) or [LM Studio](https://lmstudio.ai/) server, or
+  the OpenAI API. Configured per process, never per request; see
+  [Translation](#translation).
 
 ## Build & Test
 
@@ -155,10 +159,12 @@ Chunks land in `chunks/` next to the source (override with `outDir`); the
 `jobId` is a stable hash of source path plus budget, so re-splitting the same
 file with the same budget reuses the same job.
 
-Install once globally (`go install` lands in `~/go/bin`, already on PATH), then register the command with any client — no path needed:
+Install once, then register the command with any client — no path needed
+(`go install` lands in `~/go/bin`):
 
 ```bash
-task install        # or: go install ./cmd/mcp-md-splitter
+go install github.com/mlechner911/mdsplit/cmd/mcp-md-splitter@latest
+# from a checkout: task install
 ```
 
 The repo ships a project-local `.mcp.json` that does exactly this for you, so a client started from this directory (Crush, Claude Desktop, OpenCode, …) picks the server up automatically:
@@ -218,6 +224,83 @@ returns `Doc{Chunks, Gaps}`; `JoinGaps(chunks, gaps)` is the exact inverse.
 - `TestRoundtrip_ProjectDocs` runs the splitter over every `*.md` in the repo
   root at three budgets and asserts byte-exactness — the cheapest real corpus
   available without leaving the repo.
+
+## Translation
+
+With an endpoint configured, the splitter can run the translation itself, one
+isolated request per piece. Nothing accumulates between them, so a 10 MB
+document costs the same per step as a 10 KB one.
+
+Endpoint settings are **process configuration, never tool arguments**. A token
+passed through a tool call would land in the client's conversation transcript,
+and a caller-chosen URL would turn a tool that reads local files into an
+exfiltration channel the moment a translated document carries an injected
+instruction. `MDSPLIT_LLM_TOKEN` has no flag on purpose, so it stays out of the
+process list too.
+
+```json
+{
+  "mcpServers": {
+    "md-splitter": {
+      "command": "mcp-md-splitter",
+      "env": {
+        "MDSPLIT_LLM_URL":   "http://localhost:11434/v1",
+        "MDSPLIT_LLM_MODEL": "qwen2.5-7b-instruct",
+        "MDSPLIT_LLM_TOKEN": ""
+      }
+    }
+  }
+}
+```
+
+```bash
+mcp-md-splitter -cli -file doc.md -size 3000 -target de
+mcp-md-splitter -translate -dir chunks/ -lang de
+mcp-md-splitter -merge -dir chunks/          # -> doc.de.md
+```
+
+Via MCP the same loop is `translate_chunk(jobId, part)` once per part; only a
+one-line status comes back, never the text.
+
+### Two modes
+
+| | `-mode block` (default) | `-mode chunk` |
+|---|---|---|
+| What is sent | prose fragments only | the whole part, code masked |
+| Code fences, HTML | never transmitted | replaced by `⟦n⟧` sentinels |
+| Bullets, pipes, indentation | reproduced literally | sent, checked afterwards |
+| Structure | guaranteed | verified, and rejected if wrong |
+| Requests per part | one per fragment | one |
+| Needs an instruction-following model | no | yes |
+
+Block mode is the default because it makes damage impossible rather than
+detectable: a model cannot rewrite code it never received. That also makes a
+pure translation model usable — TranslateGemma and its kind accept a text and a
+language pair, with no channel for a rule like "leave the code alone".
+
+Chunk mode keeps the prose connected, which is what translation quality
+actually rests on, since word order is decided across a clause rather than
+within it. Masking the code first removes a quarter to a third of the input on
+typical technical Markdown, which can decide whether a part fits a small
+context window at all.
+
+In both modes, inline code, URLs, link and image targets, reference links,
+footnotes and inline HTML are masked. Image *alt text* stays translatable on
+purpose: it is prose a reader sees, while the path is not.
+
+### What is checked before anything is stored
+
+- Every sentinel must come back exactly once. Instructing a model to preserve
+  them is politeness; counting them is the mechanism.
+- `finish_reason` must be `stop`. A truncated reply loses text silently, which
+  is the failure this whole tool exists to prevent.
+- The reply must have the source's structure: same block kinds in the same
+  order, code fences byte for byte, same heading levels and table row counts.
+  Prose may change completely — otherwise the check would be useless for a
+  translation.
+
+A part that fails any of these is **not stored** and stays open, so rerunning
+retries exactly those. The original chunk is never overwritten.
 
 ## Continuous integration
 
