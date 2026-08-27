@@ -3,7 +3,11 @@
 All notable changes to this project are documented here. Versions follow
 [semantic versioning](https://semver.org/).
 
-## [Unreleased]
+## [1.5.0] - 2026-08-27
+
+Translation grew guards, a glossary and a way to tell a reasoning model to
+stop deliberating — and the README now exists in four languages, produced by
+the tool itself as proof that the pipeline runs.
 
 ### Added
 
@@ -21,10 +25,21 @@ All notable changes to this project are documented here. Versions follow
 - **`-llm-user-template`** for models that prescribe a request format, with
   shorthands for `gemma3-translator` and `translategemma`. When set, no system
   message is sent, so a model's own baked-in prompt stays in force.
+- **`-llm-reasoning`.** A reasoning model spends its budget deliberating over
+  a translation: `qwen3.5:35b` produced 2977 output tokens for one sentence, of
+  which 24 were the answer. `reasoning_effort: "none"` cuts that to 24 tokens
+  and 0.56 s — **seventy-two times faster for an identical translation**, and
+  the difference between five hours and nine minutes over four languages.
 - **`MODELS.md`** — a log of what works and, more usefully, how models fail:
   prompt echo, invented markers, modified code fences, a chat template that
-  refuses every request shape, and two specialised models that translate in
-  the opposite direction.
+  refuses every request shape, two specialised models that translate in the
+  opposite direction, four ways to disable reasoning that report success and
+  do nothing, and a section on how not to measure any of it.
+- **`docs/Modelfile.mdsplit`** — Ollama parameters for this workload, and two
+  settings that look right and are not.
+- **The README in German, Spanish, French and Chinese**, translated by the
+  tool. 18 parts each, no rejected part, all 17 code fences byte-identical to
+  the source in every language.
 
 ### Fixed
 
@@ -39,6 +54,17 @@ All notable changes to this project are documented here. Versions follow
   about `⟦n⟧` in its own text.
 - The glossary count reported per-fragment hits summed over a chunk, so a chunk
   could claim more terms than the glossary holds. It counts distinct terms now.
+- A glossary term matches its singular and plural. The extractor records
+  whichever form recurs — "code fences" — while prose uses both, so the rule
+  never fired where it was needed: three of four languages invented something
+  for exactly those sentences.
+- Identifiers, hyphen variants and phrases spanning punctuation no longer reach
+  the glossary. `put chunk` came from `put_chunk` and was rendered "Chunk
+  hinzufügen"; "code fences, tables" produced the phantom term "fences tables",
+  which all four models dutifully translated.
+- Glossary extraction no longer assumes an English source silently: the
+  language pair reaches the prompt and is recorded, and a source it cannot
+  handle warns or is refused rather than returning a list of function words.
 
 ### Changed
 
