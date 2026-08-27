@@ -98,6 +98,8 @@ type Result struct {
 	Masked   int // spans replaced by a sentinel before sending (chunk mode)
 	Reused   int // fragments answered from the memo (block mode)
 	Kept     int // fragments left untranslated after an unusable reply
+	Batched  int // short fragments offered together in one request
+	Accepted int // of those, how many came back usable
 	Verified bool
 	// Structure is set when verification failed but SkipVerify was on.
 	Structure error
@@ -244,6 +246,7 @@ func Part(ctx context.Context, c *llm.Client, m *job.Manifest, n int, opts Optio
 		Part: n, Mode: mode, InChars: len(src), OutChars: len(out),
 		Glossary: len(st.terms), Requests: st.requests, Reused: st.reused,
 		Kept: st.kept, Masked: st.masked,
+		Batched: st.batched, Accepted: st.accepted,
 	}
 	if err := split.VerifyStructure(src, out); err != nil {
 		res.Structure = err

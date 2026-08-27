@@ -81,7 +81,10 @@ func runTranslateMode(dir string, cfg llm.Config, language, sourceLang, mode str
 		case err == nil:
 			note := ""
 			if res.Mode == translate.ModeBlock {
-				note = fmt.Sprintf(", %d fragments sent", res.Requests)
+				note = fmt.Sprintf(", %d requests", res.Requests)
+				if res.Batched > 0 {
+					note += fmt.Sprintf(", %d/%d short ones batched", res.Accepted, res.Batched)
+				}
 				if res.Reused > 0 {
 					note += fmt.Sprintf(", %d reused", res.Reused)
 				}

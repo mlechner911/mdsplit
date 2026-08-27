@@ -292,6 +292,7 @@ func byBlocks(ctx context.Context, c *llm.Client, chunk string, opts Options, st
 	if st.terms == nil {
 		st.terms = map[string]bool{}
 	}
+	batchShort(ctx, c, pieces, opts, memo, st)
 	var b strings.Builder
 
 	for _, p := range pieces {
@@ -393,6 +394,8 @@ type stats struct {
 	requests int // fragments actually sent
 	reused   int // fragments answered from the memo
 	kept     int // fragments left in the source language after a bad reply
+	batched  int // short fragments offered in one request
+	accepted int // of those, how many came back usable
 	masked   int // spans replaced by a sentinel before sending (chunk mode)
 	glossary int // distinct glossary terms that applied anywhere in the chunk
 	terms    map[string]bool
