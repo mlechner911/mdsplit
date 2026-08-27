@@ -1,0 +1,68 @@
+<?xml version="1.0"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 850 260" width="850" height="260">
+  <style>
+    .text-title { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif; font-size: 15px; font-weight: 600; fill: #adbac7; }
+    .text-body { font-family: ui-monospace, SFMono-Regular, SF Mono, Menlo, Consolas, Liberation Mono, monospace; font-size: 12px; fill: #768390; }
+    .text-lookup { font-family: ui-monospace, SFMono-Regular, SF Mono, Menlo, Consolas, Liberation Mono, monospace; font-size: 13px; font-weight: bold; fill: #ff9b53; }
+    
+    .box-bg { fill: #22272e; stroke: #444c56; stroke-width: 1.5; rx: 6px; }
+    .box-lookup-zone { fill: #2c251e; stroke: #c69026; stroke-width: 1.5; rx: 6px; }
+    .box-llm { fill: #2d2236; stroke: #8957e5; stroke-width: 1.5; rx: 6px; }
+    
+    .arrow-lookup { stroke: #c69026; stroke-width: 2; fill: none; }
+    .marker-lookup { fill: #c69026; }
+
+    @media (prefers-color-scheme: light) {
+      .box-bg { fill: #f6f8fa; stroke: #d0d7de; }
+      .box-lookup-zone { fill: #fff5eb; stroke: #bf4b00; }
+      .box-llm { fill: #fbefff; stroke: #8250df; }
+      .text-title { fill: #24292f; }
+      .text-body { fill: #57606a; }
+      .text-lookup { fill: #bf4b00; }
+      .arrow-lookup { stroke: #bf4b00; }
+      .marker-lookup { fill: #bf4b00; }
+    }
+  </style>
+
+  <defs>
+    <marker id="arrowhead-lookup" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto">
+      <polygon points="0 0, 6 3, 0 6" class="marker-lookup" />
+    </marker>
+  </defs>
+
+  <!-- STEP 1: Source Document -->
+  <g transform="translate(20, 30)">
+    <rect class="box-bg" width="180" height="150" />
+    <text class="text-title" x="15" y="30">Source Document</text>
+    <text class="text-body" x="15" y="65"># Manual.md</text>
+    <text class="text-body" x="15" y="95">Large reference file</text>
+    <text class="text-body" x="15" y="115">with structured</text>
+    <text class="text-body" x="15" y="135">markdown headings.</text>
+  </g>
+
+  <!-- Arrow 1 to 2 -->
+  <path class="arrow-lookup" d="M 200 105 L 240 105" marker-end="url(#arrowhead-lookup)" />
+
+  <!-- STEP 2: mdsplit core -->
+  <g transform="translate(250, 30)">
+    <rect class="box-lookup-zone" width="410" height="150" />
+    <text class="text-title" x="15" y="30" style="fill: #ff9b53;">Stateless Navigation Tools (No Job / No Files)</text>
+    <text class="text-body" x="15" y="65"><tspan class="text-lookup">outline(file)</tspan> → Returns heading tree, sizes &amp; line info.</text>
+    <text class="text-body" x="15" y="95"><tspan class="text-lookup">read_section(file, heading)</tspan> → Surgical slicing of a specific</text>
+    <text class="text-body" x="35" y="115">section until the next equal/higher heading.</text>
+  </g>
+
+  <!-- Arrow from Core to LLM -->
+  <path class="arrow-lookup" d="M 660 105 L 700 105" marker-end="url(#arrowhead-lookup)" />
+
+  <!-- STEP 3: Agent / LLM -->
+  <g transform="translate(710, 30)">
+    <rect class="box-llm" width="120" height="150" />
+    <text class="text-title" x="15" y="30" style="fill: #bc8cff;">MCP Agent</text>
+    <text class="text-body" x="15" y="65" style="font-weight: bold; fill: #bc8cff;">OpenCode / Crush</text>
+    <text class="text-body" x="15" y="95">Only context</text>
+    <text class="text-body" x="15" y="115">needed for</text>
+    <text class="text-body" x="15" y="135" style="font-weight: bold; fill: #ff7b72;">Q&amp;A is sent.</text>
+  </g>
+</svg>
+

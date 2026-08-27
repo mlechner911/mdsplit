@@ -4,7 +4,7 @@ Splits Markdown documents into size-bounded chunks that stay safe for LLM transl
 
 Implemented in Go with three runtime modes: split CLI, merge CLI (Round-trip), and an MCP (Model Context Protocol) server exposing a chunk-at-a-time job workflow.
 
-![The pipeline: a source document is cut into size-bounded chunks without breaking code fences, tables or HTML; the splitter returns only a manifest, never the text; each part travels to a local LLM as a stateless request with no chat history, and comes back through put_chunk.](bsp.svg)
+![The pipeline: a source document is cut into size-bounded chunks without breaking code fences, tables or HTML; the splitter returns only a manifest, never the text; each part travels to a local LLM as a stateless request with no chat history, and comes back through put_chunk.](docs/pipeline.svg)
 
 ## Motivation
 
@@ -435,6 +435,8 @@ A part that fails any of these is **not stored** and stays open, so rerunning
 retries exactly those. The original chunk is never overwritten.
 
 ## Reading instead of processing
+
+![Reading by topic: the outline and read_section tools sit between a large reference document and the agent, need no job and write no files, and send only the section a question actually needs.](docs/reading.svg)
 
 The tools above solve *"process this whole document without blowing the
 context"*. `outline` and `read_section` solve the other half: *"answer from this
