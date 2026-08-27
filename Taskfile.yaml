@@ -4,6 +4,13 @@ vars:
   BINARY: mcp-md-splitter
   PKG: ./cmd/mcp-md-splitter
   VERSION_FILE: $(cat VERSION)
+  # English is the base document; every translation derives from it.
+  I18N_SOURCE: README.md
+  I18N_BASE: en
+  LANGS: de es fr zh
+  I18N_SIZE: 2500
+  I18N_TERMS: 28
+  I18N_MODE: block
 
 tasks:
   build:
@@ -48,6 +55,66 @@ tasks:
     desc: Install into $GOBIN (~/go/bin) so `mcp-md-splitter` is on PATH for MCP clients
     cmds:
       - go install -ldflags "-X main.version={{.VERSION_FILE}}" {{.PKG}}
+
+  # --- Übersetzte READMEs -------------------------------------------------
+  #
+  # English is the base; every other README.<lang>.md is generated from it.
+  # Needs an endpoint: MDSPLIT_LLM_URL and MDSPLIT_LLM_MODEL (see README).
+
+  i18n:glossary:
+    desc: Build glossary.json for each language that has none (never overwrites a reviewed one)
+    deps: [build]
+    cmds:
+      - |
+        set -e
+        : "${MDSPLIT_LLM_MODEL:?set MDSPLIT_LLM_MODEL (and MDSPLIT_LLM_URL) first}"
+        for l in {{.LANGS}}; do
+          mkdir -p i18n/$l
+          [ -f i18n/$l/index.json ] || ./bin/{{.BINARY}} -cli -file {{.I18N_SOURCE}} -size {{.I18N_SIZE}} -target $l -out-dir i18n/$l >/dev/null
+          if [ -f i18n/$l/glossary.json ]; then
+            echo "i18n/$l/glossary.json exists - keeping it (it holds reviewed decisions)"
+            continue
+          fi
+          ./bin/{{.BINARY}} -glossary -dir i18n/$l -lang $l -glossary-terms {{.I18N_TERMS}}
+        done
+
+  i18n:
+    desc: Translate the English README into every language in LANGS
+    deps: [build]
+    cmds:
+      - |
+        set -e
+        : "${MDSPLIT_LLM_MODEL:?set MDSPLIT_LLM_MODEL (and MDSPLIT_LLM_URL) first}"
+        for l in {{.LANGS}}; do
+          mkdir -p i18n/$l
+          # Haben sich die Chunk-Grenzen geändert, passen bereits übersetzte
+          # Teile nicht mehr zu ihnen. Eine Übersetzung eines Chunks, den es so
+          # nicht mehr gibt, ist schlimmer als keine - also verwerfen.
+          if [ -f i18n/$l/index.json ] && ! ./bin/{{.BINARY}} -check -dir i18n/$l >/dev/null 2>&1; then
+            echo "==> i18n/$l: source changed since the split, discarding stale parts"
+            rm -f i18n/$l/*-part-*.md i18n/$l/index.json
+          fi
+          [ -f i18n/$l/index.json ] || ./bin/{{.BINARY}} -cli -file {{.I18N_SOURCE}} -size {{.I18N_SIZE}} -target $l -out-dir i18n/$l >/dev/null
+          echo "==> $l"
+          ./bin/{{.BINARY}} -translate -dir i18n/$l -lang $l -source-lang {{.I18N_BASE}} -mode {{.I18N_MODE}}
+          ./bin/{{.BINARY}} -merge -dir i18n/$l -stamp -out README.$l.md
+        done
+
+  i18n:check:
+    desc: Report, per language, whether the translation is still current
+    deps: [build]
+    cmds:
+      - |
+        # -check meldet eine veraltete Quelle mit Exit 1. Das ist hier eine
+        # Auskunft, kein Fehler des Reports - also nicht daran scheitern.
+        for l in {{.LANGS}}; do
+          printf '=== %s ===\n' "$l"
+          if [ -f i18n/$l/index.json ]; then
+            ./bin/{{.BINARY}} -check -dir i18n/$l || true
+          else
+            echo "not split yet"
+          fi
+        done
 
   clean:
     desc: Remove build artifacts
