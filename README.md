@@ -4,6 +4,8 @@
 
 # Markdown Splitter
 
+<sub>Machine-translated by this tool: [Deutsch](README.de.md) · [Español](README.es.md) · [Français](README.fr.md) · [中文](README.zh.md) — each carries its provenance in the front matter.</sub>
+
 Splits Markdown documents into size-bounded chunks that stay safe for LLM translation or processing. Atomic blocks (code fences, tables, lists, multi-line HTML) are never split across chunk boundaries — only whole blocks move between chunks.
 
 Implemented in Go. Six runtime modes — split, merge, translate, glossary, check and outline — plus an MCP (Model Context Protocol) server that exposes the same work as a chunk-at-a-time job workflow.

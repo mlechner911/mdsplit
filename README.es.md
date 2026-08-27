@@ -4,82 +4,84 @@ translation:
   version: 1.4.0
   url: "https://github.com/mlechner911/mdsplit"
   source: README.md
-  source_sha256: 4b8a7030553edadb
-  source_chars: 25144
+  source_sha256: 5dfef16a27b78a9b
+  source_chars: 28835
   target_lang: es
-  model: qwen2.5-7b-instruct
+  model: "qwen3.5:35b"
   mode: block
-  parts: 17/17
-  translated: "2026-08-27T17:08:19Z"
+  parts: 18/18
+  translated: "2026-08-27T19:34:28Z"
   machine_translation: true
 ---
 
-# Split = división
+![Un detective inspeccionando un documento Markdown con una lupa, enfocando una sección mientras el resto permanece intacto. ](docs/hero.jpg)
 
-Divide documentos Markdown en trozos de tamaño limitado que permanecen seguros para la traducción o procesamiento por LLM. Los bloques atómicos (bloques de código, tablas, listas, HTML multi línea) nunca se dividen a través de las fronteras de los trozos — solo se mueven bloques completos entre ellos.
+<sub>Ilustración creada con Nano Banana 2</sub>
 
-Implementado en Go con tres modos de tiempo de ejecución: división CLI, fusión CLI (caminata circular), y un servidor MCP (Protocolo de Contexto del Modelo) expuesto un flujo de trabajo de tarea por trozos de texto.
+# Divisor de Markdown
 
-![La pipeline: un documento fuente se divide en chuncks de tamaño limitado sin romper bloques de código, tablas o HTML; el splitter devuelve solo un manifiesto, nunca el texto; cada parte viaja a un LLM local como una solicitud estatal con historial de chat y regresa a través de put_chunk.](docs/pipeline.svg)
+<sub>Traducido por esta herramienta: [Deutsch](README.de.md) · [Español](README.es.md) · [Français](README.fr.md) · [中文](README.zh.md) — cada uno lleva su procedencia en la materia preliminar.</sub>
+
+Divide documentos Markdown en fragmentos de tamaño limitado que permanezcan seguros para la traducción o el procesamiento por LLM. Los bloques atómicos (bloques de código, tablas, listas, HTML multilínea) nunca se dividen entre los límites de los fragmentos; solo los bloques completos se mueven entre fragmentos.
+
+Implementado en Go. Seis modos de ejecución: división, fusión, traducción, glosario, verificación y esquema, además de un servidor MCP (Protocolo de Contexto del Modelo) que expone el mismo trabajo como un flujo de trabajo de tarea por fragmentos.
+
+![El pipeline: un documento fuente se corta en fragmentos de tamaño limitado sin romper bloques de código, tablas o HTML; el divisor devuelve únicamente un manifiesto, nunca el texto; cada parte viaja a un LLM local como una solicitud sin estado sin historial de chat y regresa a través de put_chunk.](docs/pipeline.svg)
 
 ## Motivación
 
-Translating un documento largo con un modelo local es un problema de contexto antes que uno lingüístico. Un manual de 60 KB no encaja en una ventana de 8k tokens, así que tiene que ser cortado —y los cortes ingenuos son exactamente los dañinos ones.
-Divide cada N caracteres y un fence de código termina medio en una pieza y medio en la siguiente; el modelo "traduce" diligentemente la mitad huérfana, renombra los identificadores, y el bloque nunca cierra nuevamente. Divide en líneas en blanco y una tabla pierde su fila de encabezados. Divide solo en subtítulos estrictamente y una sección es de 200 bytes mientras que la siguiente es de 40 KB.
+Traducir un documento Markdown largo con un modelo local es un problema de contexto antes que de idioma. Un manual de 60 KB no cabe en una ventana de 8k tokens, por lo que debe dividirse — y las divisiones ingenuas son exactamente las dañinas. Dividir cada N caracteres hace que un bloque de código termine a medias en un fragmento y a medias en el siguiente; el modelo "traduce" diligentemente la mitad huérfana, renombra los identificadores y el bloque nunca se cierra de nuevo. Dividir en líneas en blanco hace que una tabla pierda su fila de encabezado. Dividir solo en encabezados hace que una sección tenga 200 bytes mientras que la siguiente tiene 40 KB.
 
-Haciendo que el modelo entregue el archivo completo y lo particione a sí mismo tampoco ayuda: el archivo ya está en el contexto en ese momento, lo cual era lo que se quería evitar.
+Entregar todo el archivo al modelo y pedirle que lo divida en fragmentos no ayuda tampoco: el archivo ya está en el contexto para entonces, que era lo que se quería evitar.
 
-Así que esta herramienta realiza el corte fuera del modelo, según dos reglas:
+Así que esta herramienta realiza el corte fuera del modelo, sobre dos reglas:
 
-1. Some blocks are indivisible. Code fences, tables, list items with their ⟦0⟧(blocks de código), ⟦0⟧(tablas), ⟦0⟧(listas con sus elementos).
-   continuaciones, elementos HTML. Se mantienen enteros incluso cuando eso significa expandirse.
-   通过规模预算——一块大小是两倍的增量会带来不便，⟦0⟧
-   una porción que termina en mitad de una cerca es corrupción.
-2. **El tamaño es un objetivo, no una ley.** Cuts land antes que encabezados, así que un trozo
-   comienza en una sección y la lleva enteramente. Un trozo ligeramente pequeño que es
-   self-contenida traduce mejor que una completa que comienza en mitad de la frase.
+1. **Algunos bloques son indivisibles.** Bloques de código, tablas, elementos de lista con su
+   continuaciones, elementos HTML. Permanecen completos incluso cuando eso implica explotar
+   a través del tamaño del presupuesto — un trozo que es el doble de grande es una molestia,
+   Un fragmento que termina a mitad de la cerca es corrupción.
+2. **El tamaño es un objetivo, no una ley.** Los cortes se aplican antes de los encabezados, por lo que un fragmento
+   comienza en una sección y la lleva entera. Un trozo ligeramente pequeño que es
+   self-contained se traduce mejor que una completa que comienza a mitad de oración.
 
-The MCP side follows from the same concern. `split_markdown` returns un contenido
-— parte count, tamaños, subtítulos — y *no* el texto. Se extrae el contenido una parte
-a la vez con `get_chunk` y se escribe de vuelta con `put_chunk`, por lo que el contexto
-se mantiene plano independientemente de si la fuente es 10 KB o 10 MB.
+El lado MCP sigue de la misma preocupación. `split_markdown` devuelve un manifiesto — conteo de partes, tamaños, encabezados — y no el texto. El contenido se extrae una parte a la vez con `get_chunk` y se escribe de nuevo con `put_chunk`, por lo que el contexto permanece plano sin importar si la fuente es de 10 KB o 10 MB.
 
-El último fragmento es el camino de vuelta. El chunking solo es seguro si es reversible, por lo que el manifiesto registra la separación por líneas en blanco en cada borde y la fusión se verifica byte a byte contra la fuente. Si el recorrido ida-vuelta es exacto para el documento sin traducir, el pipeline no devoró silenciosamente nada —y cualquier diferencia después de la traducción es debido al modelo, no al divisor.
+La última pieza es el camino de regreso. El fragmentado solo es seguro si es reversible, por lo que el manifiesto registra la línea en blanco en cada límite y la fusión se verifica byte por byte contra la fuente. Si el viaje completo es exacto para el documento sin traducir, la tubería no comió silenciosamente nada — y cualquier diferencia después de la traducción es obra del modelo, no del divisor.
 
-Construido para el manejo de Crush](https://github.com/charmbracelet/crush) conduciendo un modelo local Ollama, pero nada en él está específico para ninguno de los dos.
+Construido para [Crush](https://github.com/charmbracelet/crush) conduciendo un modelo local de Ollama, pero nada en él es específico de ninguno de los dos.
 
-## FEATURES
+## Características
 
-- **Secciones alineadas en bloques**: el tamaño es una *soft* división. El splitter prefiere
-  para cortar antes de un encabezado en lugar de llenar una sección hasta el borde, así que una sección
-  comienza en una sección y la mantiene intacta. Un encabezado nunca termina un bloque.
-- **Los bloques atómicos nunca se dividen**, independientemente del presupuesto: bloques de código
-  (any info string — ` ```js title="a.js" `, ` ``` go `, `~~~`, `````), GFM
-  table row groups, listas items con sus continuaciones, y múltiples líneas de HTML
-  elementos. Un bloque indivisible que excede el presupuesto obtiene su propia sección.
-  y un mensaje en el stderr.
-- **Byte-exact round-trip**: `index.json` registra el espacio en blanco entre líneas en cada
-  chunk boundary, so merging reproduce la fuente byte for byte. El único
-  normalización se documenta en `Canonical()`: líneas en blanco leading/trailing
-  son eliminados y los líneas en blanco se convierten en vacías. La indentación y los espacios en blanco duros son mantenidos.
-  Rules: - Output ONLY the result. No quotes, no commentary, no explanation. - This is a fragment of a larger document. Do not add or remove sentences. - Markers like ⟦0⟧ are placeholders. Reproduce each exactly once, unchanged. - Keep Markdown emphasis (**bold**, *italic*) where it is. line breaks (two trailing spaces) survive.
-- **CLI mode**: escribe `<name>-part-NN.md` archivos más un `index.json` manifiesto (archivo fuente, cantidad de partes, lista ordenada de trozos) junto al archivo fuente
-- **Modo de fusión**: `-merge -dir chunks/` reasembra los chunk mediante el manifiesto y reporta si el resultado es byte-identico, espacio-en blanco-identico o divergente.
-- **Flujo de trabajo de la tarea MCP**: `split_markdown` devuelve un manifiesto, no el documento.
-  contenido se mueve una parte a la vez mediante `get_chunk` / `put_chunk`, así que contexto
-  stays constant no matter how large la fuente es — lo cual es el punto principal
-  de ejecutar esto contra un pequeño modelo local.
+- **Secciones alineadas**: el tamaño es un *presupuesto* blando. El divisor prefiere
+  para cortar antes de un encabezado en lugar de llenar un fragmento hasta el borde, de modo que un fragmento
+  comienza en una sección y la mantiene entera. Un encabezado nunca termina un fragmento.
+- **Los bloques atómicos nunca se dividen**, independientemente del presupuesto que diga: bloques de código
+  (cualquier cadena de información — ` ```js title="a.js" `, ` ``` go `, `~~~`, `````), GFM
+  grupos de filas de tabla, elementos de lista con sus continuaciones y HTML de varias líneas
+  elementos. Un bloque indivisible que excede el presupuesto obtiene su propio fragmento
+  y una nota en stderr.
+- **Redonda exacta de bytes**: `index.json` registra el espacio de línea en blanco en cada
+  límite de fragmento, por lo que la fusión reproduce la fuente byte a byte. El único
+  la normalización está documentada en `Canonical()`: líneas en blanco al principio y al final
+  se recortan y las líneas que solo contienen espacios en blanco se vuelven vacías. La sangría y el endurecimiento
+  los saltos de línea (dos espacios finales) se conservan.
+- **Modo CLI**: escribe `<name>-part-NN.md` archivos más un manifiesto `index.json` (archivo fuente, recuento de partes, lista ordenada de fragmentos) junto al archivo fuente
+- **Modo de fusión**: `-merge -dir chunks/` vuelve a ensamblar los fragmentos mediante el manifiesto e informa si el resultado es idéntico en bytes, idéntico en espacios en blanco o divergente.
+- **Flujo de trabajo del MCP**: `split_markdown` devuelve un manifiesto, no el documento.
+  El contenido se mueve una parte a la vez mediante `get_chunk` / `put_chunk`, por lo que el contexto
+  permanece constante sin importar qué tan grande sea la fuente, que es todo el punto
+  de ejecutar esto contra un modelo local pequeño.
 
 ## Requisitos
 
 - Go 1.25+
-- Opcional: [archivo de tarea](https://taskfile.dev/) (`go install github.com/go-task/task/v3/cmd/task@latest`)
-- Traducción: Optional, para la traducción: cualquier punto final compatible con OpenAI — un local
-  [Ollama](https://ollama.com/) o [LM Studio](https://lmstudio.ai/) servidor, o
-  el API de OpenAI. Configurado por proceso, nunca por solicitud; see
+- Opcional: [taskfile](https://taskfile.dev/) (`go install github.com/go-task/task/v3/cmd/task@latest`)
+- Opcional, para la traducción: cualquier punto final compatible con OpenAI — un local
+  [Ollama](https://ollama.com/) o servidor de LM Studio](https://lmstudio.ai/), o
+  la API de OpenAI. Configurada por proceso, nunca por solicitud; véase
   [Traducción](#translation).
 
-## Build & Test
+## Compilar y probar
 
 ```bash
 # with Taskfile
@@ -87,7 +89,7 @@ task build     # -> bin/mcp-md-splitter
 task test      # go test -v ./...
 task vet
 task check     # vet + test + build (CI-style)
-task roundtrip # Split von test.md + Merge zurück + Roundtrip-Check
+task roundtrip # split the fixture, merge it back, fail unless byte-identical
 task install   # go install -> ~/go/bin (global `mcp-md-splitter`)
 task clean     # removes bin/ and chunks/
 
@@ -96,16 +98,16 @@ go build -ldflags "-X main.version=$(cat VERSION)" -o bin/mcp-md-splitter ./cmd/
 go test ./...
 ```
 
-## Usos
+## Uso
 
-### CLI mode
+### Modo CLI
 
 ```bash
 ./bin/mcp-md-splitter -cli -file docs/integration.md -size 4000
 ./bin/mcp-md-splitter -cli -file docs/integration.md -size 4000 -target de
 ```
 
-Output escrito en un directorio `chunks/` adjacentemente al archivo fuente:
+Se escribe en un directorio `chunks/` junto al archivo de fuente:
 
 ```
 chunks/
@@ -116,7 +118,7 @@ chunks/
                         #           gaps[], parts[{part,file,chars,heading}]
 ```
 
-### ⟦0⟧ modo de fusión
+### Modo de fusión
 
 ```bash
 # reassemble via chunks/index.json
@@ -124,34 +126,29 @@ chunks/
 ./bin/mcp-md-splitter -merge -dir chunks/ -out combined.md
 ```
 
-The result is written next to the source as `<source>.merged`, o como
-`<source>.<target>.md` cuando las partes fueron traducidas. Cada parte usa su versión editada si existe y la original en caso contrario, por lo que un proceso aún inacabado sigue fusionando.
+El resultado se escribe junto a la fuente como `<source>.merged`, o como `<source>.<target>.md` cuando las partes fueron traducidas. Cada parte usa su versión editada si existe y la original de lo contrario, por lo que una ejecución a medias aún fusiona.
 
-The round-trip check compares byte-exactly (`Canonical`) first and only then
-tolerantly (`Normalize`), so the normalization can no longer hide a real
-difference. It reports byte-identical / whitespace-only / diverging.
+La verificación de viaje completo compara primero y únicamente de manera exacta en bytes (`Canonical`) y luego tolerante (`Normalize`), por lo que la normalización ya no puede ocultar una diferencia real. Informa sobre idénticos en bytes / solo espacios en blanco / divergentes.
 
-Sin un `index.json`, todos los archivos `*-part-NN.md` se fusionan en orden lexicográfico; sin el `gaps` del manifiesto, se asume una línea en blanco en cada boundary.
+Sin un `index.json`, todos los archivos `*-part-NN.md` se fusionan en orden lexicográfico; sin el `gaps` del manifiesto, se asume una línea en blanco en cada límite.
 
-### MCP modo (predeterminado)
+### Modo MCP (predeterminado)
 
-Run sin banderas para servir el servidor MCP stdio. Las herramientas forman una **tarea workflow** así que un pequeño modelo local nunca tiene que mantener todo el documento:
-`split_markdown` escribe las partes en disco y devuelve solo un manifiesto, luego
-el contenido se mueve parte a parte.
+Ejecutar sin flags para servir el servidor MCP de stdio. Las herramientas forman un **flujo de trabajo de tarea** para que un modelo local pequeño nunca tenga que contener todo el documento: `split_markdown` escribe los fragmentos en disco y devuelve solo un manifiesto, luego el contenido se mueve una parte a la vez.
 
-| Tool | .Arguments: | Returns |
+| Herramienta | Argumentos | Retornos |
 |---|---|---|
-| `split_markdown` | `filePath`, `size` (8000), `target`, `outDir` | `jobId`, tamaño de parte y encabezado. **No** el contenido. |
+| `split_markdown` | `filePath`, `size` (8000), `target`, `outDir` | manifiesto solo — `jobId`, tamaño y encabezado por parte. **No** el contenido. |
 | `get_chunk` | `jobId`, `part` | el texto de esa parte (la versión editada si existe) |
-| `put_chunk` | `jobId`, `part`, `text` | almacena la parte traducida, informa del progreso y el siguiente fragmento abierto |
-| `job_status` | `jobId` \| `chunksDir` | progress y lista de partes, no contenido |
-| `merge_chunks` | `jobId` \| `chunksDir`, `out` | reasembra; las partes editadas ganan, las partes no tocadas caen nuevamente al original |
-| `translate_chunk` | `jobId`, `part`, `language`, `mode` | translate una parte mediante el punto de conexión configurado; solo se devuelve una línea de estado |
+| `put_chunk` | `jobId`, `part`, `text` | almacena la parte traducida, informa del progreso y de la siguiente parte abierta |
+| `job_status` | `jobId` \| `chunksDir` | progreso y lista de partes, sin contenido |
+| `merge_chunks` | `jobId` \| `chunksDir`, `out` | reassemblies; partes editadas ganan, partes sin tocar vuelven al original |
+| `translate_chunk` | `jobId`, `part`, `language`, `mode` | traduce una parte mediante el punto final configurado; solo regresa una línea de estado |
 | `build_glossary` | `jobId`, `language`, `terms` | propone la terminología del documento y escribe `glossary.json` para revisión |
-| `outline` | `filePath` | every heading with the size of the section it opens. **No text.** No job needed |
-| `read_section` | `filePath`, `section` | one section verbatim, bloques intactos. Sin tarea necesaria. |
+| `outline` | `filePath` | cada encabezado con el tamaño de la sección que abre. **No texto.** No se necesita tarea |
+| `read_section` | `filePath`, `section` | una sección textualmente, bloques intactos. No se necesita trabajo |
 
-Una traducción se realiza así:
+Una ejecución de traducción se ve así:
 
 ```
 split_markdown(filePath="doc.md", size=2000, target="de")
@@ -161,21 +158,19 @@ get_chunk(jobId, part=1) → translate → put_chunk(jobId, part=1, text=…)
 merge_chunks(jobId) → doc.de.md
 ```
 
-`put_chunk` nunca toca el trozo original, por lo que se puede reanudar, repetir parte por parte o fusionar partes no concluidas. Sin editar nada, `merge_chunks` además verifica el recorrido exacto byte a byte contra la fuente.
+`put_chunk` nunca toca el fragmento original, por lo que una ejecución puede reanudarse, rehacerse parte por parte o fusionarse a medias. Sin editar nada, `merge_chunks` además verifica el viaje completo byte-exacto contra la fuente.
 
-Chunks land en `chunks/`next a la fuente (sobrescribir con `outDir`); el
-`jobId` es una división estable del camino de la fuente más el presupuesto, así que la misma
-división del archivo con el mismo presupuesto reutiliza la misma tarea.
+Los fragmentos se colocan en `chunks/` junto a la fuente (sobrescribir con `outDir`); el `jobId` es un hash estable de la ruta de la fuente más el presupuesto, por lo que volver a dividir el mismo archivo con el mismo presupuesto reutiliza la misma tarea.
 
-Instale una vez, luego registre el comando con cualquier cliente — no se necesita ruta
-(`go install` lands in `~/go/bin`):
+Instale una vez y luego registre el comando con cualquier cliente; no se necesita ruta
+(`go install` se instala en `~/go/bin`):
 
 ```bash
 go install github.com/mlechner911/mdsplit/cmd/mcp-md-splitter@latest
 # from a checkout: task install
 ```
 
-El repo envía un `.mcp.json` que hace exactamente esto para ti, así que un cliente comenzado desde este directorio (Crush, Claude Desktop, OpenCode, ...) levanta automáticamente el servidor:
+El repositorio envía un `.mcp.json` local al proyecto que hace exactamente esto por ti, de modo que un cliente iniciado desde este directorio (Crush, Claude Desktop, OpenCode, …) detecta el servidor automáticamente:
 
 ```json
 {
@@ -187,13 +182,13 @@ El repo envía un `.mcp.json` que hace exactamente esto para ti, así que un cli
 }
 ```
 
-A global `crushrc` entry works the same way: `mcp add md-splitter --command mcp-md-splitter`.
+Una entrada global `crushrc` funciona de la misma manera: `mcp add md-splitter --command mcp-md-splitter`.
 
-## Traducción
+## traducción
 
-Con un punto final configurado, la división puede ejecutar la traducción por sí misma, una solicitud isolada por pieza. Nada se acumula entre ellas, por lo que un documento de 10 MB cuesta lo mismo por paso que uno de 10 KB.
+Con un punto final configurado, el divisor puede ejecutar la traducción por sí mismo, una solicitud aislada por pieza. Nada se acumula entre ellas, por lo que un documento de 10 MB cuesta lo mismo por paso que uno de 10 KB.
 
-Endpoint settings son **configuración del proceso, nunca argumentos de herramienta**. Un token pasado a través de un llamado a una herramienta caería en el transcripto de la conversación del cliente, y una URL elegida por el llamador convertiría una herramienta que lee archivos locales en un canal de exfiltración el momento en que un documento traducido lleva una instrucción inyectada. `MDSPLIT_LLM_TOKEN` tiene un flag a propósito, así que se mantiene fuera de la lista del proceso también.
+La configuración de los puntos finales es **configuración del proceso, nunca argumentos de la herramienta**. Un token pasado a través de una llamada a la herramienta terminaría en el registro de conversación del cliente, y una URL elegida por quien llama convertiría una herramienta que lee archivos locales en un canal de exfiltración en el momento en que un documento traducido lleve una instrucción inyectada. `MDSPLIT_LLM_TOKEN` no tiene bandera a propósito, para que también permanezca fuera de la lista de procesos.
 
 ```json
 {
@@ -216,41 +211,35 @@ mcp-md-splitter -translate -dir chunks/ -lang de
 mcp-md-splitter -merge -dir chunks/          # -> doc.de.md
 ```
 
-Via MCP el mismo bucle se ejecuta `translate_chunk(jobId, part)` una vez por parte; solo un
-_estado_ de una línea viene de vuelta, nunca el texto.
+A través de MCP el mismo bucle se `translate_chunk(jobId, part)` una vez por parte; solo regresa un estado de una línea, nunca el texto.
 
-### Dos modos⟦0⟧
+### Dos modos
 
-| | `-mode block` (default) | `-mode chunk` |
+| | `-mode block` (predeterminado) | `-mode chunk` |
 |---|---|---|
-| Rules: - Output ONLY the result. No quotes, no commentary, no explanation. - This is a fragment of a larger document. Do not add or remove sentences. - Markers like ⟦0⟧ are placeholders. Reproduce each exactly once, unchanged. - Keep Markdown emphasis (**bold**, *italic*) where it is. | Rules: - Output ONLY the result. No quotes, no commentary, no explanation. - This is a fragment of a larger document. Do not add or remove sentences. - Markers like ⟦0⟧ are placeholders. Reproduce each exactly once, unchanged. - Keep Markdown emphasis (**bold**, *italic*) where it is. | ⟦0⟧ |
-| bloques de código, HTML | never transmitted | replaced by `⟦n⟧` sentinels |
-| ⟦0⟧ | Rules: - Output ONLY the result. No quotes, no commentary, no explanation. - This is a fragment of a larger document. Do not add or remove sentences. - Markers like ⟦0⟧ are placeholders. Reproduce each exactly once, unchanged. - Keep Markdown emphasis (**bold**, *italic*) where it is. | sent, revisado después |
-| STRUCTURA | garantizada | verified, y rechazado si está malo |
-| Requests por parte | ⟦1⟧ Las reglas establecen que solo se debe proporcionar el resultado. No se deben usar comillas, comentarios ni explicaciones. Este es un fragmento de un documento más grande. No se deben añadir ni eliminar sentencias. Se deben reproducir exactamente los marcadores como ⟦0⟧ sin cambios. Se mantendrá el énfasis en Markdown (**negrita**, *cursiva*) donde está. | one |
-| Rules: - Output ONLY the result. No quotes, no commentary, no explanation. - This is a fragment of a larger document. Do not add or remove sentences. - Markers like ⟦0⟧ are placeholders. Reproduce each exactly once, unchanged. - Keep Markdown emphasis (**bold**, *italic*) where it is. | no | Rules: - Output ONLY the result. No quotes, no commentary, no explanation. - This is a fragment of a larger document. Do not add or remove sentences. - Markers like ⟦0⟧ are placeholders. Reproduce each exactly once, unchanged. - Keep Markdown emphasis (**bold**, *italic*) where it is. ⟦0⟧ |
+| Lo que se envía | Solo fragmentos de prosa | Toda la parte, código enmascarado |
+| Cajas de código, HTML | Nunca transmitido | Reemplazado por sentinelas `⟦n⟧` |
+| Viñetas, barras verticales, sangría | Reproducido literalmente | Enviado, verificado después |
+| Estructura | Garantizada | Verificada y rechazada si es incorrecta |
+| Solicitudes por parte | Una por fragmento | Una |
+| Requiere un modelo que siga instrucciones | No | Sí |
 
-Block mode es el modo predeterminado porque hace que el daño sea imposible en lugar de detectable: un modelo no puede reescribir código que nunca recibió. Eso también hace que un modelo puro de traducción sea usable —TranslateGemma y sus similares aceptan un texto y una pareja de idiomas, sin ningún canal para una regla como "deja el código solo".
+El modo bloque es el predeterminado porque hace que el daño sea imposible en lugar de detectable: un modelo no puede reescribir código que nunca recibió. Esto también hace que un modelo de traducción puro sea utilizable — TranslateGemma y sus similares aceptan un texto y una pareja de idiomas, sin canal para una regla como "dejar el código intacto".
 
-Chunk mode mantiene el prosa conectado, lo cual es lo que realmente reposa la calidad de la traducción, ya que el orden de las palabras se decide a lo largo de una cláusula en lugar de dentro de ella. Ocultando el código primero elimina un cuarto hasta un tercio del input enMarkdown técnico típico, lo cual puede decidir si una parte encaja en todo un marco contextual pequeño o no.
+El modo de fragmentos mantiene la prosa conectada, lo cual es en lo que realmente descansa la calidad de la traducción, ya que el orden de las palabras se decide a través de una cláusula y no dentro de ella. Ocultar primero el código elimina entre un cuarto y un tercio de la entrada en Markdown técnico típico, lo cual puede decidir si una parte cabe en una ventana de contexto pequeña o no.
 
-En ambos modos, el código en línea, las URL, los destinos de enlaces y imágenes,
-anotaciones y HTML en línea están ocultos. El *texto alternativo* de las imágenes
-se mantiene translatable a propósito: es prosa que un lector ve, mientras que la
-ruta no lo es.
+En ambos modos, el código en línea, las URL, los objetivos de enlace e imagen, los enlaces de referencia, las notas al pie y el HTML en línea están enmascarados. El texto alternativo de la imagen *alt text* permanece traducible a propósito: es prosa que ve el lector, mientras que la ruta no lo es.
 
-### glosario
+### Glosario
 
-Porque cada fragmento se traduce en isolación, nada impide que un modelo
-renderice el mismo término dos maneras en dos fragmentos. Medido en este README,
-un término driftó cuatro maneras a través de cuatro idiomas:
+Como cada fragmento se traduce de forma aislada, nada impide que un modelo renderice el mismo término de dos maneras en dos fragmentos. Medido en este README, un término varió de cuatro formas a través de cuatro idiomas:
 
-| -"bloques de código" became | |
+| "cercas de código" se convirtió en | |
 |---|---|
-| Rules: - Output ONLY the result. No quotes, no commentary, no explanation. - Este es un fragmento de un documento más largo. No añadas ni elimines sentencias. - Marcajes como ⟦0⟧ son lugares reservados. Reproduce cada uno exactamente igual, sin cambios. - Mantén el énfasis en Markdown (**negrita**, *cursiva*) donde está. | 德尔imiters de código |
-| Francés | term = término |
-| Chino | *width* *block* |
-| AndAlsorés | Code-Abschnitte |
+| español | delimitador de código |
+| francés | **un code** — el término simplemente desapareció |
+| chino | bloque de código |
+| alemán | segmentos de código |
 
 ```bash
 mcp-md-splitter -glossary -dir chunks/ -lang es   # writes chunks/glossary.json
@@ -258,48 +247,54 @@ $EDITOR chunks/glossary.json                      # ← the point of the exercis
 mcp-md-splitter -translate -dir chunks/ -lang es  # picks it up automatically
 ```
 
-Candidates are found **sin un modelo**: palabras y frases que se repiten en varios chunks, y que también aparecen dentro del código o un identificador en algún lugar del documento — "chunk" es prosa en una línea y `chunks/` en la siguiente. Solo los tokens de forma de identificador cuentan desde un bloque conjurado, porque bloques conjurados están llenos de inglés en comentarios y valores JSON, y contar eso hizo que "sin" y "devuelve" parecieran términos técnicos.
+Los candidatos se encuentran **sin un modelo**: palabras y frases que se repiten en varios fragmentos y que también aparecen dentro de un código o identificador en algún lugar del documento — "fragmento" es prosa en una línea y `chunks/` en la siguiente. Solo los tokens con forma de identificador cuentan desde dentro de un bloque, porque los bloques cercados están llenos de inglés en comentarios y valores JSON, y contar eso hizo que "sin" y "devuelve" parecieran términos técnicos.
 
-Se traducen luego en **una** solicitud, no una por chunk. Un pasaje por chunk
-vincularía una salida estructurada frágil con uno valioso — un fallo de parseo JSON
-costaría una traducción también — y haría que el glosario dependiera del orden
-en que se procesaran los chunks.
+Luego se traducen en **una** solicitud, no una por fragmento. Un pase por fragmentos vincularía una salida estructurada frágil a la valiosa —un error de análisis JSON costaría también una traducción— y haría que el glosario dependiera del orden en que se procesaron los fragmentos.
 
-El glosario se construye **antes** de traducir y luego se congela. Al desarrollarlo mientras
-se traduce dejaría las partes más tempranas realizadas con un glosario vacío y las últimas con uno completo, incorporando la misma inconsistencia que existe para eliminar en las partes realizadas primero, y haciendo imposible volver a hacer una sola parte por sí misma.
+El glosario se construye **antes** de traducir y luego se congela. Crear uno mientras se traduce dejaría las primeras partes con un glosario vacío y la última con uno completo, cocinando la misma inconsistencia que existe para eliminar en las partes hechas primero, y haciendo imposible rehacer una sola parte por sí misma.
 
-Un valor que regresa como una frase es rechazado en lugar de almacenarse. Esto no es meramente estético: cada entrada se inyecta en cada prompt que menciona su término, como `term = value`, por lo que una frase allí guía la traducción en lugar de
-afinarla. Medido contra un modelo de 7B, `chunk starts` regresó como *"un bloque que comienza en mitad de una fence es dañino."*
+Un valor que regresa como una oración se rechaza en lugar de almacenarse. Esto no es cosmético: cada entrada se inyecta en cada prompt que menciona su término, como `term = value`, por lo que una oración allí dirige la traducción en lugar de afilarla. Comparado con un modelo de 7B, `chunk starts` regresó como *"un bloque que comienza en mitad de una fence es dañino."*
 
-Solo se envían las entradas del glosario cuyo término aparece en un fragmento, por lo que un glosario de 200 términos no infla cada prompt.
+Solo se envían con cada fragmento las entradas cuyo término aparece realmente en él, por lo que un glosario de 200 términos no infla cada solicitud.
 
-`glossary.json` es un punto de corrección más barato en el flujo de trabajo —leer unos minutos aquí evita tener que releer once secciones traducidas. "Interface = Schnittstelle" es una decisión, no un hecho.
+`glossary.json` está destinado a ser editado. "Interface = Schnittstelle" es una decisión, no un hecho, y este es el punto más económico en la cadena de procesamiento para corregirlo: unos minutos aquí valen más que releer once fragmentos traducidos.
 
-#### fuente
+#### Idioma de origen
 
-Candidate extraction assumes una **fuente en inglés**, y no solo en el prompt.
-Su lista de stopwords es inglesa, y encuentra palabras dividiendo por espacios. Pasar
-`-source-lang` para decir lo contrario; la herramienta entonces te dice qué esperar en lugar de devolver silenciosamente una lista de artículos y preposiciones:
+La extracción de candidatos asume una **fuente en inglés**, y no solo en el prompt. Su lista de palabras vacías es en inglés, y encuentra palabras dividiendo por espacios. Pase `-source-lang` para indicar lo contrario; la herramienta entonces le dice qué esperar en lugar de devolver silenciosamente una lista de artículos y preposiciones:
 
-| fuente | ¿Qué sucede? |
+| Fuente | Qué ocurre |
 |---|---|
-| Reglas: - Salida SOLO el resultado. Sin comillas, sin comentarios, sin explicaciones. - Este es un fragmento de un documento más grande. No añadas ni elimines sentencias. - Marcadores como ⟦0⟧ deben reproducirse exactamente iguales, sin cambios. - Mantén los énfasis en Markdown (**negrita**, *cursiva*) donde están. | lo que el extractor fue construido y medido |
-| Aleman, Español, Francés, … | works, pero advierte: las palabras funcionales aparecerán entre los candidatos y necesitarán eliminarse |
-| Chino, japonés, coreano, tailandés | glosario split |
+| Inglés (predeterminado) | Para lo que se construyó y midió el extractor |
+| Alemán, español, francés, … | funciona, pero advierte: las palabras funcionales aparecerán entre los candidatos y deberán eliminarse |
+| Chino, japonés, coreano, tailandés | se niega — no hay espacios para la división, así que escriba el glosario a mano |
 
-The language pair is recorded in `glossary.json` as `source_lang` / `target_lang`, because a glossary is only valid for the pair it was built for.
+La pareja de idiomas se registra en `glossary.json` como `source_lang` / `target_lang`, porque un glosario solo es válido para la pareja para la cual fue construido.
 
-Translation itself tiene ninguna tal limitación: `-source-lang` llega al plantilla del
-paso, y la estructura de bloque garantiza su mantenimiento independientemente
-de las lenguas. Solo la *extracción de términos* es de forma anglosajona.
+La propia traducción no tiene tal limitación: `-source-lang` llega a la plantilla de solicitud, y las garantías de la estructura en modo bloque se mantienen sin importar los idiomas. Solo la extracción de terminología está conformada en inglés.
 
-### Modelos cuyos plantillas de chat no tomarán nuestro solicitud
+### Modelos que prescriben un formato de solicitud
 
-Algunos modelos envían un plantilla de chat que una capa compatible con OpenAI no puede satisfacer.
-TranslateGemma es el caso en punto: rechaza de plano un rol del sistema ("Las conversaciones deben comenzar con un prompt del usuario") y quiere que el contenido del usuario sea un mapeo llevando `source_lang_code` y `target_lang_code` — campos que
-el esquema de OpenAI elimina antes de que la plantilla ni siquiera las vea. Cada variante devuelve HTTP 400.
+Un modelo de traducción a menudo desea que la solicitud tenga una forma particular.
+`zongwei/gemma3-translator` espera `Translate from English to German: <text>`
+y no tiene otra manera de aprender el idioma objetivo: el texto plano no contiene nada.
 
-Su plantilla resulta ser para construir prosa inglesa ordinaria, no tokens de control exóticos, por lo que renderizar el turno aquí en lugar de en el lado del servidor evita todo el problema:
+```bash
+mcp-md-splitter -translate -dir chunks/ -lang de \
+  -llm-model zongwei/gemma3-translator:1b -llm-user-template gemma3-translator
+```
+
+`-llm-user-template` acepta una plantilla de Go con los mismos campos, o una abreviatura: `gemma3-translator` para el formato anterior, `translategemma` para la propia instrucción de TranslateGemma como un mensaje de usuario en texto plano. Cuando está configurado, **no se envía ningún mensaje del sistema**: quien llama y da forma al mensaje decide si las reglas pertenecen a él. Eso es lo que hace posible utilizar un modelo con su propio prompt del sistema integrado: un mensaje del sistema enviado por nosotros lo reemplazaría.
+
+El mismo modelo puede necesitar uno u otro mecanismo dependiendo de quién lo sirva.
+La plantilla de chat de TranslateGemma rechaza todas las solicitudes con forma de OpenAI en LM Studio, por lo que allí necesita `-llm-transport completions -llm-template
+translategemma`. El empaquetado de Ollama documenta la instrucción como tarea del llamador, por lo que allí `-llm-user-template translategemma` es suficiente. Ambos renderizan el mismo texto, incluidas las dos líneas en blanco antes del pasaje que su tarjeta de modelo señala.
+
+### Modelos cuya plantilla de chat no aceptará nuestra solicitud
+
+Algunos modelos envían una plantilla de chat que una capa compatible con OpenAI no puede satisfacer. TranslateGemma es el caso en cuestión: rechaza directamente un rol de sistema ("Las conversaciones deben comenzar con un prompt de usuario") y desea que el contenido del usuario sea un mapeo que lleve `source_lang_code` y `target_lang_code` — campos que el esquema de OpenAI elimina antes de que la plantilla los vea. Cada variante devuelve HTTP 400.
+
+Su plantilla resulta construir prosa inglesa ordinaria, no tokens de control exóticos, por lo que renderizar el turno aquí en lugar del servidor esquiva todo el problema:
 
 ```bash
 export MDSPLIT_LLM_TRANSPORT=completions
@@ -314,18 +309,15 @@ translate the following English text into German:
 '
 ```
 
-La plantilla es un template Go con `.System`, `.User`, `.SourceLang`,
-`.TargetLang`, `.SourceLangName` y `.TargetLangName`, así que una configuración cubre toda pareja de idiomas; `-llm-template translategemma` es un apodo para
-el uno anterior, y `MDSPLIT_LLM_STOP` establece las secuencias de parada (por defecto `<end_of_turn>`).
+La plantilla es una plantilla de Go con `.System`, `.User`, `.SourceLang`, `.TargetLang`, `.SourceLangName` y `.TargetLangName`, por lo que una configuración cubre cada pareja de idiomas; `-llm-template translategemma` es un atajo para la anterior, y `MDSPLIT_LLM_STOP` establece las secuencias de parada (predeterminado `<end_of_turn>`).
 
-Block mode es el compañero adecuado aquí — un modelo que toma una pareja de idiomas y nada más tiene un canal para una regla como "deja el código intacto", así que la estructura tiene que garantizarse en lugar de solicitarse.
+El modo bloque es el compañero adecuado aquí — un modelo que toma una pareja de idiomas y nada más no tiene canal para una regla como "dejar el código intacto", por lo que la estructura debe ser garantizada en lugar de solicitada.
 
-**Un modelo sin canal de instrucciones no puede utilizar un glosario tampoco.** Eso es
-el trato que hay que ponderar: un modelo especializado en traducción suele traducir una frase mejor, pero no se puede indicar que *Fence* debe ser renderizado de una manera particular a lo largo de un manual. A lo largo de un documento largo, la terminología consistente tiende a importar más que cualquier frase individual, por lo que un modelo general que sigue instrucciones con un glosario revisado a menudo superará a un mejor traductor trabajando en el vacío.
+**Un modelo sin canal de instrucciones tampoco puede utilizar un glosario.** Esa es la compensación que debe sopesarse: un modelo especializado en traducción suele traducir una oración mejor, pero no se le puede indicar que *Fence* debe renderizarse de una manera particular a lo largo de un manual. En un documento extenso, la terminología coherente tiende a ser más importante que cualquier oración individual, por lo que un modelo general que siga instrucciones y cuente con un glosario revisado a menudo superará a un mejor traductor que trabaja a ciegas.
 
-### Provenancia y frescura⟦0⟧
+### Procedencia y antigüedad
 
-Cada división registra de dónde proviene, en `index.json`, ya sea que se traduzca o no:
+Cada división registra de dónde proviene, en `index.json`, si se traduce o no:
 
 ```json
 "provenance": {
@@ -343,48 +335,39 @@ Cada división registra de dónde proviene, en `index.json`, ya sea que se tradu
 }
 ```
 
-`source_sha256` es el campo que merece su mantenimiento. Tamaño y fecha son
-informativos; el hash permite a una ejecución posterior responder la pregunta que realmente importa para la documentación mantena:
+`source_sha256` es el campo que justifica su existencia. El tamaño y la fecha son informativos; el hash permite que una ejecución posterior responda a la pregunta que realmente importa para la documentación mantenida:
 
 ```bash
 mcp-md-splitter -check -dir chunks/
 # source: CHANGED since the split - re-split and retranslate   (exit 1)
 ```
 
-Una traducción que ha pasado desapercibida y se ha vuelto obsoleta es peor que una que falta claramente, y nada más en el flujo de trabajo lo notaría.
+Una traducción que ha ido envejeciendo silenciosamente es peor que una que está obviamente faltante, y nada más en la tubería lo notaría.
 
-`-merge -stamp` adiciona el registro en el documento propio de YAML
-front matter, para cuando una *persona* deba verlo — no menos
-`machine_translation: true`, ya que una traducción automática de máquina se ve
-exactamente como algo que alguien escribió y revisó.
+`-merge -stamp` además escribe el registro en la propia materia frontal YAML del documento, para cuando una *persona* deba verlo — no menos `machine_translation: true`, ya que una traducción de máquina de otro modo se ve exactamente como algo que alguien escribió y revisó.
 
-It never simply prepends. A document that already has front matter would be
-destroyed by a second `---` block, because the original one stops being
-metadata and becomes content; an existing block is edited in place instead, and
-stamping twice replaces the record rather than duplicating it. The endpoint URL
-is deliberately not recorded: a model name is provenance, an internal address
-is a leak.
+Nunca simplemente se prefiere. Un documento que ya tiene metadatos frontales sería destruido por un segundo bloque `---`, porque el original deja de ser metadatos y se convierte en contenido; un bloque existente se edita in situ, y estampar dos veces reemplaza el registro en lugar de duplicarlo. La URL del endpoint no se registra deliberadamente: un nombre de modelo es procedencia, una dirección interna es una fuga.
 
-Dos consecuencias que vale la pena conocer. El chequeo ida-vuelta se realiza contra el texto *no estampado*, de lo contrario informaría "diferencia" para siempre después del primer sello. Y el sello hace que el proceso de fusión sea no-idempotente, por lo que un documento reconstruido en una programación muestra una diferencia en cada ejecución incluso cuando nada cambió —lo cual es la razón por la que el sello es opcional y el hash, no la fecha, es el campo soportante.
+Dos consecuencias que vale la pena conocer. La verificación de viaje completo se ejecuta contra el texto sin sellar; de lo contrario, informaría "difiere" para siempre después del primer sello. Y el marca temporal hace que la fusión no sea idempotente, por lo que un documento reconstruido en un horario muestra una diferencia en cada ejecución incluso cuando nada cambió — razón por la cual el sellado es opcional y el hash, no la fecha, es el campo portador de carga.
 
 ### ¿Qué se verifica antes de almacenar cualquier cosa?
 
-- Every sentinel must come back exactly once. Instructing a model to preserve
-  esa es la cortesía; contarlas es el mecanismo.
-- `finish_reason` must be `stop`. Un respuesta truncada pierde texto silenciosamente, que
-  es el fracaso de lo que este工具存在是为了防止的。⟦0⟧
-- The reply must have the source's structure: same block kinds in the same
-  order, code fences byte para byte, mismos niveles de encabezado y conteos de filas de tabla.
-  Prose puede cambiar completamente — de lo contrario, el chequeo sería inútil para un
+- Cada centinela debe regresar exactamente una vez. Instruir a un modelo para preservar
+  ellos es la cortesía; contarlos es el mecanismo.
+- `finish_reason` debe ser `stop`. Una respuesta truncada pierde texto silenciosamente, lo que
+  es el fallo para cuya prevención existe esta herramienta.
+- La respuesta debe tener la estructura de la fuente: mismos tipos de bloques en el mismo
+  orden, bloques de código byte por byte, mismos niveles de encabezado y conteos de filas de tabla.
+  La prosa puede cambiar por completo — de lo contrario, la verificación sería inútil para un
   traducción.
 
-Una parte que falla en cualquiera de estos no se almacena y permanece abierta, por lo que la ejecución nuevamente intenta exactamente esas. El trozo original nunca se sobrescribe.
+Una parte que falla cualquiera de estas **no se almacena** y permanece abierta, por lo que volver a ejecutar los reintentos exactamente esas. El fragmento original nunca se sobrescribe.
 
-## Leer en lugar de procesar
+## Lectura en lugar de procesamiento
 
-![Reading por tema: el esquema y las herramientas read_section se sitúan entre un documento de referencia grande y el agente, no necesitan ninguna tarea ni escriben archivos, y envían solo la sección que realmente necesita una pregunta.](docs/reading.svg)]
+![Lectura por tema: las herramientas de esquema y lectura de sección se sitúan entre un gran documento de referencia y el agente, no requieren tarea ni escriben archivos, y envían solo la sección que una pregunta realmente necesita. ](docs/reading.svg)
 
-El texto superior resuelve *"procesar este documento completo sin exceder el contexto"*. `outline` y `read_section` solucionan la otra mitad: *" responder basándose en este documento sin leerlo todo"*. La misma primitiva — cortar el Markdown de manera segura y hacer que las piezas sean accesibles — dirigida a una pregunta diferente.
+Las herramientas anteriores resuelven *"procesar este documento entero sin desbordar el contexto"*. `outline` y `read_section` resuelven la otra mitad: *"responder desde este documento sin leerlo todo"*. Misma primitiva — cortar Markdown de forma segura y hacer que las piezas sean direccionables — apuntando a una pregunta diferente.
 
 ```bash
 mcp-md-splitter -outline -file README.md
@@ -397,22 +380,51 @@ mcp-md-splitter -outline -file README.md
 mcp-md-splitter -section "Two modes" -file README.md
 ```
 
-Reading este esquema del README cuesta aproximadamente 700 caracteres; la sección "Modos" mide 1301. Una pregunta sobre los modos es resoluble con 2 KB en lugar de 23 KB — y el tamaño mostrado cubre toda la sección incluyendo sus subsecciones, lo cual es lo que decide si leerla resulta asequible en absoluto.
+Leer el índice de este README cuesta aproximadamente 700 caracteres; la sección "Dos modos" tiene 1301. Una pregunta sobre los modos se puede responder con 2 KB en lugar de 23 KB — y el tamaño mostrado cubre toda la sección, incluidas sus subsecciones, lo cual es lo que determina si leerla es asequible o no.
 
-Ni ninguna herramienta necesita una tarea: no se escriben chunk, no hay manifiesto, no hay `jobId`. Ese
-aparato existe para procesar un documento de principio a fin; buscar algo quiere nada de eso.
+Ninguna herramienta necesita una tarea: no se escriben fragmentos, no hay manifiesto, ni `jobId`. Ese aparato existe para procesar un documento de principio a fin; buscar algo no requiere ninguno de ellos.
 
-**Una sección no es un chunk.** Los chunks siguen el presupuesto de bytes, mientras que las secciones siguen la estructura: `## Usage` esta sección abarca varios chunks, mientras que una breve sección comparte uno con su vecino. `read_section` devuelve el encabezado y todo lo que está debajo de él, hasta el próximo encabezado del mismo nivel o más cercano — así que un bloque de código vuelve completo cada vez.
+**Una sección no es un fragmento.** Los fragmentos siguen el presupuesto; las secciones siguen el esquema: `## Usage` abarca varios fragmentos, mientras que una sección corta comparte uno con su vecino. `read_section` devuelve el encabezado y todo lo que hay debajo, hasta el siguiente encabezado del mismo nivel o de un nivel más bajo — así, un bloque de código siempre se devuelve completo.
 
-Sección por título, o por ruta (`"Usage > CLI"`) cuando el mismo título
-ocurre más de una vez. Un título ambiguo se rechaza con las candidatas
-listadas, en lugar de adivinado.
+Diríjase a una sección por título o por ruta (`"Usage > CLI"`) cuando el mismo título aparezca más de una vez. Un título ambiguo se rechaza con los candidatos listados, en lugar de adivinarse.
 
-El diferencial respecto a un servidor de recuperación construido en embeddings es que esto es **exacto en lugar de similar**: obtienes la sección que el documento mismo define, sin índice que construir, nada por mantener sincronizado, y ninguna ventana que pueda comenzar en mitad de un bloque.
+La diferencia con un servidor de recuperación basado en incrustaciones es que esto es **exacto en lugar de similar**: obtienes la sección que el propio documento define, sin necesidad de construir un índice, nada que mantener sincronizado y ninguna ventana que pueda comenzar en medio de un bloque.
 
-## Estructura del Proyecto
+## Decir a tu agente cómo usarlo
 
-Diseno Estándar Go `cmd`/`internal`:
+Registrar el servidor no es suficiente. Las descripciones de las herramientas indican qué hace cada una, pero un modelo solo lee la descripción de una herramienta que ya ha decidido llamar; por lo tanto, las reglas de orden llegan demasiado tarde. Incluya esto en el `AGENTS.md`, `CLAUDE.md` o prompt del sistema de su proyecto:
+
+```markdown
+## Markdown documents
+
+The `md-splitter` MCP server is available. Use it instead of reading Markdown
+files directly.
+
+- **Looking something up:** call `outline(filePath)` first, then
+  `read_section` for the one section you need. Do not read a whole document
+  to answer a question about part of it.
+- **Translating or rewriting:** `split_markdown` → `build_glossary` once →
+  `translate_chunk` per part → `merge_chunks`. Never read the document into
+  the conversation first; that is the cost the tool exists to avoid.
+- **Never paste a chunk's text into a message.** `put_chunk` and
+  `translate_chunk` write to disk. The text is supposed to travel from file to
+  model and back without passing through the conversation.
+- **A rejected part is not a failure to work around.** It was not stored, so
+  the document is intact. Call `translate_chunk` again for that part; the
+  others are unaffected.
+- **Do not loop `get_chunk` over every part.** Holding all of them at once is
+  the situation the split was made to prevent.
+```
+
+Esa última regla es la que vale la pena mantener. Un modelo al que se le entrega una herramienta de fragmentación a menudo recuperará cada fragmento y los volverá a ensamblar en su propio contexto, lo cual cuesta más que leer el archivo —la herramienta ha sido utilizada y su propósito derrotado en el mismo aliento.
+
+La configuración del endpoint pertenece en `.mcp.json` bajo `env`, nunca en un prompt: un modelo no puede pasar un token que nunca recibió, y ese es el punto.
+
+Note que el propio `AGENTS.md` de este repositorio es un documento diferente: informa a los agentes *que trabajan en* el divisor, no a los agentes *que lo utilizan*.
+
+## Estructura del proyecto
+
+Disposición estándar de Go `cmd`/`internal`:
 
 ```
 .
@@ -435,31 +447,32 @@ Diseno Estándar Go `cmd`/`internal`:
 │   └── *_test.go                 # unit tests + byte-exact round-trip corpus
 ├── Taskfile.yaml                 # task build/test/vet/check/roundtrip/install/clean
 ├── VERSION                       # 1.3.0
-└── test.md                       # fixture for the full-split test
+└── testdata/sample.md            # a real README, used as a fixture
 ```
 
-Pipeline: `ExtractBlocks(content) []Block` parses Markdown into bloques atómicos — cada uno llevando su texto exacto, la línea en blanco `Gap` que lo siguió, y sus `Kind`. `groupBlocks` entonces une lo que no debe separarse (bloques sin línea en blanco entre ellos; un encabezado y su sección). `packRanges` llena trozos de esos grupos, preferiendo una división antes de un encabezado. `SplitDoc(content, max)` devuelve `Doc{Chunks, Gaps}`; `JoinGaps(chunks, gaps)` es el inverso exacto.
+Pipeline: `ExtractBlocks(content) []Block` analiza Markdown en bloques atómicos — cada uno con su texto exacto, la línea en blanco `Gap` que lo siguió y su `Kind`. `groupBlocks` luego une lo que no debe separarse (bloques sin línea en blanco entre ellos; un encabezado y su sección). `packRanges` rellena fragmentos de esos grupos, prefiriendo un corte antes de un encabezado. `SplitDoc(content, max)` devuelve `Doc{Chunks, Gaps}`; `JoinGaps(chunks, gaps)` es el inverso exacto.
 
-## Development Notes
+## Notas de desarrollo
 
-- **Todo lo que un usuario o un modelo lee es inglés**: CLI output, error
-  mensajes, bandera de ayuda y las descripciones de la herramienta MCP. Comentarios de código y pruebas ⟦0⟧
-  las mensajes de fallo son en alemán — que la división es deliberada, así que mantén它。
-- No Markdown AST library. La parser es línea por línea con proposito: un AST no sería necesario.
-  deben ser reducidas de vuelta a la fuente para cortar y preservar los bytes de origen
-  exactamente es la cosa en la que depende el contrato de ida y vuelta.
-- `TestRoundtrip_ProjectDocs` ejecuta el splitter sobre cada `*.md` en el repositorio
-  root en tres presupuestos y afirma byte-exactitud — el más barato real corpus
-  available sin salir del repo.
+- **Todo lo que lee un usuario o un modelo es inglés**: salida de la CLI, error
+  mensajes, ayuda de bandera y descripciones de herramientas MCP. Comentarios de código y pruebas
+  los mensajes de error están en alemán — esa división es deliberada, así que manténgala.
+- No hay biblioteca de análisis sintáctico abstracto (AST). El analizador es basado en líneas a propósito: un AST sería
+  deben volver a reducirse a la fuente para activarse y preservar los bytes de la fuente
+  exactamente es lo único en lo que depende el contrato de ida y vuelta.
+- `TestRoundtrip_ProjectDocs` ejecuta el divisor sobre cada `*.md` en el repositorio
+  root en tres presupuestos y afirma la exactitud de los bytes — el corpus real más económico
+  disponible sin salir del repositorio.
 
 ## Integración continua
 
-[`.github/workflows/ci.yml`](.github/workflows/ci.yml) se ejecuta en cada empujón:
-`gofmt`/`go vet`/`go mod tidy` una vez, la suite de pruebas en Linux, macOS y Windows
-(el divisor es principalmente manejo de rutas, y el registro de tareas reside en
-`os.UserCacheDir()`), y un trabajo que realiza una división y fusión de cada
-archivo Markdown en el repositorio a tres presupuestos, fallando a menos que cada uno regrese byte-identico.
+[`.github/workflows/ci.yml`](.github/workflows/ci.yml) se ejecuta en cada push:
+`gofmt`/`go vet`/`go mod tidy` una vez, el conjunto de pruebas en Linux, macOS y Windows
+(el divisor es principalmente manejo de rutas, y el registro de tareas vive en
+`os.UserCacheDir()`), y una tarea de viaje completo que divide y fusiona cada
+archivo Markdown en el repositorio en tres presupuestos, fallando a menos que cada uno regrese
+byte-identical.
 
 ## Licencia
 
-MIT © 2026 Michael Lechner — see [LICENSE](LICENSE).
+MIT © 2026 Michael Lechner — ver [LICENSE](LICENSE).
