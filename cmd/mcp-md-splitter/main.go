@@ -29,13 +29,18 @@ func main() {
 	llmURL := flag.String("llm-url", env.BaseURL, "OpenAI-compatible base URL (env MDSPLIT_LLM_URL; default "+llm.DefaultURL+")")
 	llmModel := flag.String("llm-model", env.Model, "model name (env MDSPLIT_LLM_MODEL)")
 	llmTimeout := flag.Duration("llm-timeout", env.Timeout, "per-request timeout (env MDSPLIT_LLM_TIMEOUT)")
+	llmTransport := flag.String("llm-transport", string(env.Transport), "chat (default) or completions; completions renders the prompt here instead of relying on the server's chat template (env MDSPLIT_LLM_TRANSPORT)")
+	llmTemplate := flag.String("llm-template", env.PromptTemplate, "Go template for the completions transport, fields .System .User .SourceLang .TargetLang (env MDSPLIT_LLM_TEMPLATE)")
 	flag.Parse()
 
 	cfg := llm.Config{
-		BaseURL: *llmURL,
-		Model:   *llmModel,
-		Token:   env.Token, // deliberately env-only: never a flag, never an argument
-		Timeout: *llmTimeout,
+		BaseURL:        *llmURL,
+		Model:          *llmModel,
+		Token:          env.Token, // deliberately env-only: never a flag, never an argument
+		Timeout:        *llmTimeout,
+		Transport:      llm.Transport(*llmTransport),
+		PromptTemplate: *llmTemplate,
+		Stop:           env.Stop,
 	}
 
 	switch {

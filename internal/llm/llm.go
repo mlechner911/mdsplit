@@ -18,28 +18,73 @@ import (
 	"net/http"
 	"os"
 	"strings"
+	"text/template"
 	"time"
 )
 
 // DefaultURL is a local Ollama instance.
 const DefaultURL = "http://localhost:11434/v1"
 
+// Transport selects which endpoint carries a request.
+type Transport string
+
+const (
+	// TransportChat uses /chat/completions with a system and a user message.
+	TransportChat Transport = "chat"
+	// TransportCompletions uses /completions with a prompt we render
+	// ourselves, bypassing the server-side chat template.
+	//
+	// Some models ship a chat template that an OpenAI-compatible layer cannot
+	// satisfy. TranslateGemma is the case in point: its template rejects a
+	// system role outright ("Conversations must start with a user prompt") and
+	// demands the user content be a mapping with source_lang_code and
+	// target_lang_code - fields the OpenAI schema strips before the template
+	// ever sees them. Rendering the turn ourselves sidesteps all of it.
+	TransportCompletions Transport = "completions"
+)
+
+// DefaultPromptTemplate renders a Gemma-style turn, which is what the
+// completions transport needs for the Gemma and TranslateGemma families.
+// Available fields: .System, .User, .SourceLang, .TargetLang.
+const DefaultPromptTemplate = "<start_of_turn>user\n{{.System}}\n\n{{.User}}<end_of_turn>\n<start_of_turn>model\n"
+
+// DefaultStop ends generation at the end of the model turn.
+var DefaultStop = []string{"<end_of_turn>"}
+
 // Config holds the endpoint settings.
 type Config struct {
-	BaseURL string
-	Model   string
-	Token   string
-	Timeout time.Duration
+	BaseURL   string
+	Model     string
+	Token     string
+	Timeout   time.Duration
+	Transport Transport
+	// PromptTemplate is a Go text/template used by the completions transport.
+	PromptTemplate string
+	// Stop ends generation. Empty means DefaultStop for completions.
+	Stop []string
+}
+
+// PromptData is what a prompt template can reference.
+type PromptData struct {
+	System     string
+	User       string
+	SourceLang string
+	TargetLang string
 }
 
 // ConfigFromEnv reads MDSPLIT_LLM_URL / _MODEL / _TOKEN / _TIMEOUT. Flags
 // override whatever this returns.
 func ConfigFromEnv() Config {
 	c := Config{
-		BaseURL: os.Getenv("MDSPLIT_LLM_URL"),
-		Model:   os.Getenv("MDSPLIT_LLM_MODEL"),
-		Token:   os.Getenv("MDSPLIT_LLM_TOKEN"),
-		Timeout: 5 * time.Minute,
+		BaseURL:        os.Getenv("MDSPLIT_LLM_URL"),
+		Model:          os.Getenv("MDSPLIT_LLM_MODEL"),
+		Token:          os.Getenv("MDSPLIT_LLM_TOKEN"),
+		Timeout:        5 * time.Minute,
+		Transport:      Transport(os.Getenv("MDSPLIT_LLM_TRANSPORT")),
+		PromptTemplate: os.Getenv("MDSPLIT_LLM_TEMPLATE"),
+	}
+	if v := os.Getenv("MDSPLIT_LLM_STOP"); v != "" {
+		c.Stop = strings.Split(v, ",")
 	}
 	if v := os.Getenv("MDSPLIT_LLM_TIMEOUT"); v != "" {
 		if d, err := time.ParseDuration(v); err == nil {
@@ -61,7 +106,16 @@ func (c Config) Describe() string {
 	if c.Token != "" {
 		auth = "token set"
 	}
-	return fmt.Sprintf("%s model=%s (%s)", c.url(), c.Model, auth)
+	t := c.transport()
+	return fmt.Sprintf("%s model=%s transport=%s (%s)", c.url(), c.Model, t, auth)
+}
+
+// transport falls back to the chat endpoint.
+func (c Config) transport() Transport {
+	if c.Transport == TransportCompletions {
+		return TransportCompletions
+	}
+	return TransportChat
 }
 
 func (c Config) url() string {
@@ -102,9 +156,18 @@ type chatMessage struct {
 	Content string `json:"content"`
 }
 
+type completionRequest struct {
+	Model       string   `json:"model"`
+	Prompt      string   `json:"prompt"`
+	Temperature float64  `json:"temperature"`
+	Stream      bool     `json:"stream"`
+	Stop        []string `json:"stop,omitempty"`
+}
+
 type chatResponse struct {
 	Choices []struct {
 		Message      chatMessage `json:"message"`
+		Text         string      `json:"text"` // completions transport
 		FinishReason string      `json:"finish_reason"`
 	} `json:"choices"`
 	Error *struct {
@@ -125,23 +188,20 @@ func (e *ErrTruncated) Error() string {
 // That isolation is the point - it is what keeps the context flat no matter
 // how many chunks a document has.
 func (c *Client) Chat(ctx context.Context, system, user string) (string, error) {
+	return c.Ask(ctx, PromptData{System: system, User: user})
+}
+
+// Ask sends one isolated request over the configured transport.
+func (c *Client) Ask(ctx context.Context, data PromptData) (string, error) {
 	if !c.cfg.Ready() {
 		return "", fmt.Errorf("no model configured - set MDSPLIT_LLM_MODEL or pass -llm-model")
 	}
-	body, err := json.Marshal(chatRequest{
-		Model: c.cfg.Model,
-		Messages: []chatMessage{
-			{Role: "system", Content: system},
-			{Role: "user", Content: user},
-		},
-		Temperature: 0,
-		Stream:      false,
-	})
+	path, body, err := c.buildRequest(data)
 	if err != nil {
-		return "", fmt.Errorf("encode request: %w", err)
+		return "", err
 	}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.cfg.url()+"/chat/completions", bytes.NewReader(body))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.cfg.url()+path, bytes.NewReader(body))
 	if err != nil {
 		return "", fmt.Errorf("build request: %w", err)
 	}
@@ -156,17 +216,17 @@ func (c *Client) Chat(ctx context.Context, system, user string) (string, error) 
 	}
 	defer resp.Body.Close()
 
-	data, err := io.ReadAll(io.LimitReader(resp.Body, 32<<20))
+	raw, err := io.ReadAll(io.LimitReader(resp.Body, 32<<20))
 	if err != nil {
 		return "", fmt.Errorf("read response: %w", err)
 	}
 	if resp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("endpoint returned %s: %s", resp.Status, snippet(data))
+		return "", fmt.Errorf("endpoint returned %s: %s", resp.Status, snippet(raw))
 	}
 
 	var out chatResponse
-	if err := json.Unmarshal(data, &out); err != nil {
-		return "", fmt.Errorf("decode response: %w (body: %s)", err, snippet(data))
+	if err := json.Unmarshal(raw, &out); err != nil {
+		return "", fmt.Errorf("decode response: %w (body: %s)", err, snippet(raw))
 	}
 	if out.Error != nil {
 		return "", fmt.Errorf("endpoint error: %s", out.Error.Message)
@@ -178,10 +238,58 @@ func (c *Client) Chat(ctx context.Context, system, user string) (string, error) 
 	if r := ch.FinishReason; r != "" && r != "stop" {
 		return "", &ErrTruncated{Reason: r}
 	}
-	if strings.TrimSpace(ch.Message.Content) == "" {
+	content := ch.Message.Content
+	if content == "" {
+		content = ch.Text // completions transport
+	}
+	if strings.TrimSpace(content) == "" {
 		return "", fmt.Errorf("endpoint returned an empty message")
 	}
-	return ch.Message.Content, nil
+	return content, nil
+}
+
+// buildRequest renders the payload for the configured transport.
+func (c *Client) buildRequest(data PromptData) (string, []byte, error) {
+	if c.cfg.transport() == TransportCompletions {
+		tmplText := c.cfg.PromptTemplate
+		if tmplText == "" {
+			tmplText = DefaultPromptTemplate
+		}
+		tmpl, err := template.New("prompt").Parse(tmplText)
+		if err != nil {
+			return "", nil, fmt.Errorf("parse prompt template: %w", err)
+		}
+		var sb strings.Builder
+		if err := tmpl.Execute(&sb, data); err != nil {
+			return "", nil, fmt.Errorf("render prompt template: %w", err)
+		}
+		stop := c.cfg.Stop
+		if len(stop) == 0 {
+			stop = DefaultStop
+		}
+		body, err := json.Marshal(completionRequest{
+			Model: c.cfg.Model, Prompt: sb.String(),
+			Temperature: 0, Stream: false, Stop: stop,
+		})
+		if err != nil {
+			return "", nil, fmt.Errorf("encode request: %w", err)
+		}
+		return "/completions", body, nil
+	}
+
+	body, err := json.Marshal(chatRequest{
+		Model: c.cfg.Model,
+		Messages: []chatMessage{
+			{Role: "system", Content: data.System},
+			{Role: "user", Content: data.User},
+		},
+		Temperature: 0,
+		Stream:      false,
+	})
+	if err != nil {
+		return "", nil, fmt.Errorf("encode request: %w", err)
+	}
+	return "/chat/completions", body, nil
 }
 
 // snippet trims a body for an error message.
