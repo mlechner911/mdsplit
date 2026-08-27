@@ -104,7 +104,7 @@ type Result struct {
 }
 
 // systemPrompt builds the instruction sent with every chunk.
-func systemPrompt(opts Options, chunk string) (string, int) {
+func systemPrompt(opts Options, chunk string) (string, []string) {
 	task := opts.Instruction
 	if task == "" {
 		lang := LanguageName(opts.Language)
@@ -128,17 +128,17 @@ Rules:
   invent, drop, merge or renumber one.
 - Leave file paths and command names untouched.`)
 
-	applied := 0
+	var applied []string
 	if len(opts.Glossary) > 0 {
 		var lines []string
 		lower := strings.ToLower(chunk)
 		for term, want := range opts.Glossary {
 			if strings.Contains(lower, strings.ToLower(term)) {
 				lines = append(lines, fmt.Sprintf("- %s = %s", term, want))
+				applied = append(applied, term)
 			}
 		}
 		if len(lines) > 0 {
-			applied = len(lines)
 			sortStrings(lines)
 			b.WriteString("\n\nUse exactly these terms:\n")
 			b.WriteString(strings.Join(lines, "\n"))
@@ -214,7 +214,7 @@ func Part(ctx context.Context, c *llm.Client, m *job.Manifest, n int, opts Optio
 	}
 
 	var out string
-	var st stats
+	st := newStats()
 	switch mode {
 	case ModeChunk:
 		masked, tokens := maskChunk(src)
@@ -228,7 +228,10 @@ func Part(ctx context.Context, c *llm.Client, m *job.Manifest, n int, opts Optio
 			return Result{}, fmt.Errorf("part %d rejected: %w", n, err)
 		}
 		out = strings.TrimSpace(restored) + "\n"
-		st.requests, st.glossary, st.masked = 1, applied, len(tokens)
+		for _, t := range applied {
+			st.terms[t] = true
+		}
+		st.requests, st.masked = 1, len(tokens)
 	default:
 		body, err := byBlocks(ctx, c, src, opts, &st)
 		if err != nil {
@@ -239,7 +242,7 @@ func Part(ctx context.Context, c *llm.Client, m *job.Manifest, n int, opts Optio
 
 	res := Result{
 		Part: n, Mode: mode, InChars: len(src), OutChars: len(out),
-		Glossary: st.glossary, Requests: st.requests, Reused: st.reused,
+		Glossary: len(st.terms), Requests: st.requests, Reused: st.reused,
 		Kept: st.kept, Masked: st.masked,
 	}
 	if err := split.VerifyStructure(src, out); err != nil {

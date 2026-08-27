@@ -301,3 +301,32 @@ func TestRestore_ErrorNamesTheDamage(t *testing.T) {
 		t.Errorf("Meldung nennt die Bilanz nicht: %v", err)
 	}
 }
+
+// TestSegmentPrompt_ReportsDistinctTerms: die Zahl im Statusbericht summierte
+// die Treffer je Fragment auf. Über einen Chunk hinweg meldete sie damit mehr
+// Begriffe, als das Glossar überhaupt hat - was wie ein Fehler im Glossar
+// aussieht statt wie einer in der Zählung.
+func TestSegmentPrompt_ReportsDistinctTerms(t *testing.T) {
+	opts := Options{
+		Language: "de",
+		Glossary: map[string]string{"code fence": "Code-Zaun", "manifest": "Manifest"},
+	}
+	prompt, applied := segmentPrompt(opts, "The code fence and the manifest")
+	if len(applied) != 2 {
+		t.Fatalf("erwartet 2 Begriffe, bekommen %v", applied)
+	}
+	if !strings.Contains(prompt, "code fence = Code-Zaun") {
+		t.Errorf("Glossarregel fehlt im Prompt:\n%s", prompt)
+	}
+	// Derselbe Begriff in mehreren Fragmenten bleibt ein Begriff.
+	seen := map[string]bool{}
+	for _, frag := range []string{"a code fence here", "another code fence", "the manifest"} {
+		_, ts := segmentPrompt(opts, frag)
+		for _, x := range ts {
+			seen[x] = true
+		}
+	}
+	if len(seen) != 2 {
+		t.Errorf("erwartet 2 verschiedene Begriffe über drei Fragmente, bekommen %d: %v", len(seen), seen)
+	}
+}

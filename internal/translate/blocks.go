@@ -214,10 +214,13 @@ func textPieces(s string) []piece {
 	return out
 }
 
-// segmentPrompt is the instruction for one fragment. Instruction-capable models
+// segmentPrompt is the instruction for one fragment. It returns the glossary
+// terms that applied, not how many: summing per-fragment counts over a chunk
+// reports more terms than the glossary holds, which reads like a bug in the
+// glossary rather than in the counting. Instruction-capable models
 // honour it; a pure translation model ignores it, which is exactly why the
 // structure is guaranteed mechanically rather than asked for.
-func segmentPrompt(opts Options, fragment string) (string, int) {
+func segmentPrompt(opts Options, fragment string) (string, []string) {
 	task := opts.Instruction
 	if task == "" {
 		lang := LanguageName(opts.Language)
@@ -236,17 +239,17 @@ Rules:
 - Markers like ⟦0⟧ are placeholders. Reproduce each exactly once, unchanged.
 - Keep Markdown emphasis (**bold**, *italic*) where it is.`)
 
-	applied := 0
+	var applied []string
 	if len(opts.Glossary) > 0 {
 		var lines []string
 		lower := strings.ToLower(fragment)
 		for term, want := range opts.Glossary {
 			if strings.Contains(lower, strings.ToLower(term)) {
 				lines = append(lines, fmt.Sprintf("- %s = %s", term, want))
+				applied = append(applied, term)
 			}
 		}
 		if len(lines) > 0 {
-			applied = len(lines)
 			sortStrings(lines)
 			b.WriteString("\n\nUse exactly these terms:\n" + strings.Join(lines, "\n"))
 		}
@@ -260,6 +263,9 @@ Rules:
 func byBlocks(ctx context.Context, c *llm.Client, chunk string, opts Options, st *stats) (string, error) {
 	pieces := planChunk(chunk)
 	memo := map[string]string{}
+	if st.terms == nil {
+		st.terms = map[string]bool{}
+	}
 	var b strings.Builder
 
 	for _, p := range pieces {
@@ -271,13 +277,15 @@ func byBlocks(ctx context.Context, c *llm.Client, chunk string, opts Options, st
 		out, hit := memo[masked]
 		if !hit {
 			system, applied := segmentPrompt(opts, p.text)
+			for _, t := range applied {
+				st.terms[t] = true
+			}
 			reply, err := c.Ask(ctx, opts.prompt(system, masked))
 			if err != nil {
 				return "", err
 			}
 			out = strings.TrimSpace(reply)
 			st.requests++
-			st.glossary += applied
 			memo[masked] = out
 		} else {
 			st.reused++
@@ -335,5 +343,9 @@ type stats struct {
 	reused   int // fragments answered from the memo
 	kept     int // fragments left in the source language after a bad reply
 	masked   int // spans replaced by a sentinel before sending (chunk mode)
-	glossary int
+	glossary int // distinct glossary terms that applied anywhere in the chunk
+	terms    map[string]bool
 }
+
+// newStats prepares the per-chunk counters.
+func newStats() stats { return stats{terms: map[string]bool{}} }
