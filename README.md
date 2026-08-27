@@ -150,6 +150,8 @@ content moves one part at a time.
 | `merge_chunks` | `jobId` \| `chunksDir`, `out` | reassembles; edited parts win, untouched parts fall back to the original |
 | `translate_chunk` | `jobId`, `part`, `language`, `mode` | translates one part via the configured endpoint; only a status line comes back |
 | `build_glossary` | `jobId`, `language`, `terms` | proposes the document's terminology and writes `glossary.json` for review |
+| `outline` | `filePath` | every heading with the size of the section it opens. **No text.** No job needed |
+| `read_section` | `filePath`, `section` | one section verbatim, blocks intact. No job needed |
 
 A translation run looks like this:
 
@@ -431,6 +433,48 @@ stamp is opt-in and the hash, not the date, is the load-bearing field.
 
 A part that fails any of these is **not stored** and stays open, so rerunning
 retries exactly those. The original chunk is never overwritten.
+
+## Reading instead of processing
+
+The tools above solve *"process this whole document without blowing the
+context"*. `outline` and `read_section` solve the other half: *"answer from this
+document without reading all of it"*. Same primitive — cut Markdown safely and
+make the pieces addressable — pointed at a different question.
+
+```bash
+mcp-md-splitter -outline -file README.md
+#      1  22841  Markdown Splitter
+#      9   2133    Motivation
+#    194  10554    Translation
+#    231   1301      Two modes
+#    257   3425      Glossary
+#    ...
+mcp-md-splitter -section "Two modes" -file README.md
+```
+
+Reading this README's outline costs about 700 characters; the "Two modes"
+section is 1301. A question about the modes is answerable from 2 KB instead of
+23 KB — and the size shown covers the whole section including its subsections,
+which is what decides whether reading it is affordable at all.
+
+Neither tool needs a job: no chunks are written, no manifest, no `jobId`. That
+apparatus exists for processing a document end to end; looking something up
+wants none of it.
+
+**A section is not a chunk.** Chunks follow the byte budget, sections follow the
+outline: `## Usage` above spans several chunks, while a short section shares one
+with its neighbour. `read_section` returns the heading and everything under it,
+down to the next heading of the same or a shallower level — so a code fence
+comes back whole, every time.
+
+Address a section by title, or by path (`"Usage > CLI"`) when the same title
+occurs more than once. An ambiguous title is refused with the candidates
+listed, rather than guessed at.
+
+The difference from a retrieval server built on embeddings is that this is
+**exact rather than similar**: you get the section the document itself defines,
+with no index to build, nothing to keep in sync, and no window that can start
+in the middle of a block.
 
 ## Project Structure
 

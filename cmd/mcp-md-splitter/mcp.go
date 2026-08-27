@@ -74,6 +74,8 @@ func runMCPMode(cfg llm.Config) {
 	s.AddTool(putChunkTool(), putChunkHandler)
 	s.AddTool(jobStatusTool(), jobStatusHandler)
 	s.AddTool(mergeTool(), mergeHandler)
+	s.AddTool(outlineTool(), outlineHandler)
+	s.AddTool(readSectionTool(), readSectionHandler)
 	if llmCfg.Ready() {
 		s.AddTool(translateChunkTool(), translateChunkHandler)
 		s.AddTool(buildGlossaryTool(), buildGlossaryHandler)
@@ -538,4 +540,78 @@ func buildGlossaryHandler(ctx context.Context, req mcp.CallToolRequest) (*mcp.Ca
 	b.WriteString("\nAsk the user to review that file before translating: a glossary is a set of\n")
 	b.WriteString("decisions, and this is the cheapest point in the pipeline to correct one.\n")
 	return mcp.NewToolResultText(b.String()), nil
+}
+
+// --- outline / read_section ----------------------------------------------
+//
+// These two need no job. The chunk apparatus exists for processing a whole
+// document; looking something up wants none of it.
+
+func outlineTool() mcp.Tool {
+	return mcp.NewTool("outline",
+		mcp.WithDescription(
+			"List a Markdown document's headings - level, title, path, line and the size of the "+
+				"section each one opens - without returning any of its text. Use this to find out what "+
+				"a large document contains and how much a given part would cost to read, then pull just "+
+				"that part with read_section. The size shown covers the whole section including its "+
+				"subsections, which is what decides whether reading it is affordable."),
+		mcp.WithString("filePath", mcp.Required(),
+			mcp.Description("path to the Markdown file")),
+	)
+}
+
+func outlineHandler(_ context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	path := argString(req, "filePath")
+	if path == "" {
+		return mcp.NewToolResultError("filePath is required"), nil
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return mcp.NewToolResultError(fmt.Sprintf("cannot read %s: %v", path, err)), nil
+	}
+	topics := split.Outline(string(data))
+	if len(topics) == 0 {
+		return mcp.NewToolResultText("No headings in this document."), nil
+	}
+	b := &strings.Builder{}
+	fmt.Fprintf(b, "%s - %d headings, %d chars total\n\n", filepath.Base(path), len(topics), len(data))
+	for _, t := range topics {
+		fmt.Fprintf(b, "%6d chars  %s%s\n", t.Chars, strings.Repeat("  ", t.Level-1), t.Title)
+	}
+	b.WriteString("\nRead one with read_section(filePath, section). Address it by title, or by\n")
+	b.WriteString("path (\"Usage > CLI\") when the same title occurs more than once.\n")
+	return mcp.NewToolResultText(b.String()), nil
+}
+
+func readSectionTool() mcp.Tool {
+	return mcp.NewTool("read_section",
+		mcp.WithDescription(
+			"Return one section of a Markdown document verbatim: the heading and everything under "+
+				"it, down to the next heading of the same or a shallower level. Code fences, tables and "+
+				"lists come back whole - this is an exact cut along the document's own structure, not a "+
+				"similarity window that can start in the middle of a block. "+
+				"Call outline first to see what is available. An ambiguous title is refused with the "+
+				"candidates listed, rather than guessed at."),
+		mcp.WithString("filePath", mcp.Required(),
+			mcp.Description("path to the Markdown file")),
+		mcp.WithString("section", mcp.Required(),
+			mcp.Description("the heading to read: a title (\"Installation\") or a full path (\"Usage > CLI\"); case is ignored")),
+	)
+}
+
+func readSectionHandler(_ context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	path := argString(req, "filePath")
+	want := argString(req, "section")
+	if path == "" || want == "" {
+		return mcp.NewToolResultError("filePath and section are both required"), nil
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return mcp.NewToolResultError(fmt.Sprintf("cannot read %s: %v", path, err)), nil
+	}
+	text, err := split.Section(string(data), want)
+	if err != nil {
+		return mcp.NewToolResultError(err.Error()), nil
+	}
+	return mcp.NewToolResultText(text), nil
 }

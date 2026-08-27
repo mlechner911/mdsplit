@@ -27,6 +27,8 @@ func main() {
 	stamp := flag.Bool("stamp", false, "write provenance (tool, version, source hash, model) into the merged document's YAML front matter")
 	glossaryMode := flag.Bool("glossary", false, "propose terminology for a split and write glossary.json for review; run this before -translate")
 	glossaryLimit := flag.Int("glossary-terms", 40, "how many candidate terms to propose")
+	outlineMode := flag.Bool("outline", false, "list a document's headings with their size, without printing any of its text")
+	section := flag.String("section", "", "with -outline: print just this section, addressed by title or by path (\"Usage > CLI\")")
 	checkMode := flag.Bool("check", false, "report whether a split is still current: progress, and whether the source changed since it was made")
 	mode := flag.String("mode", "block", "translation granularity: block (code never sent, structure guaranteed) or chunk (whole chunk, needs an instruction-following model)")
 
@@ -55,6 +57,8 @@ func main() {
 	switch {
 	case *translateMode:
 		runTranslateMode(*chunksDir, cfg, *language, *sourceLang, *mode)
+	case *outlineMode || *section != "":
+		runOutlineMode(*filePath, *section)
 	case *glossaryMode:
 		runGlossaryMode(*chunksDir, cfg, *language, *sourceLang, *glossaryLimit)
 	case *checkMode:

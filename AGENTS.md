@@ -12,9 +12,11 @@ layout. Six runtime modes, selected by flags; MCP is the default.
 | Translate | `-translate -dir D -lang de [-mode block\|chunk]` | one isolated request per piece |
 | Glossary | `-glossary -dir D -lang de` | proposes terminology, writes `glossary.json` |
 | Check | `-check -dir D` | progress, and whether the source changed since the split |
+| Outline | `-outline -file X.md [-section "Usage > CLI"]` | headings with section sizes, or one section verbatim |
 
 MCP tools: `split_markdown` (returns a manifest, **never** the content),
-`get_chunk`, `put_chunk`, `job_status`, `merge_chunks`, and — only when an
+`get_chunk`, `put_chunk`, `job_status`, `merge_chunks`, `outline` and
+`read_section` (these last two need no job at all), plus — only when an
 endpoint is configured — `translate_chunk` and `build_glossary`.
 
 ## Commands
@@ -54,6 +56,7 @@ internal/split/
   join.go        Canonical, Normalize, JoinGaps, MergeFilesGaps
   html.go        tag maps, htmlLineDelta, htmlOpensBlock, stripInline
   verify.go      VerifyStructure - is this a translation or damage?
+  outline.go     Outline, Section - the reading side
 internal/job/
   job.go         Manifest, Provenance, chunk paths, jobId registry
   stamp.go       YAML front-matter stamping (merges, never prepends)
@@ -85,6 +88,11 @@ sends a whole part with code and protected spans replaced by `⟦n⟧` sentinels
 Before anything is stored: every sentinel must return exactly once,
 `finish_reason` must be `stop`, and `VerifyStructure` must find the source's
 shape. A part that fails is not stored and stays open.
+
+**Reading is jobless.** `Outline` and `Section` write nothing and need no
+manifest. A section is not a chunk: chunks follow the byte budget, sections
+follow the outline, so `Section` cuts from a heading to the next one of the
+same or a shallower level.
 
 **The glossary is built before translating and then frozen.** Candidates are
 found without a model; the list is translated in a single request into a
