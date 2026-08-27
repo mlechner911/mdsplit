@@ -1,8 +1,12 @@
+![A detective inspecting a Markdown document with a magnifying glass, pulling one section into focus while the rest stays untouched.](docs/hero.jpg)
+
+<sub>Illustration created with Nano Banana 2</sub>
+
 # Markdown Splitter
 
 Splits Markdown documents into size-bounded chunks that stay safe for LLM translation or processing. Atomic blocks (code fences, tables, lists, multi-line HTML) are never split across chunk boundaries — only whole blocks move between chunks.
 
-Implemented in Go with three runtime modes: split CLI, merge CLI (Round-trip), and an MCP (Model Context Protocol) server exposing a chunk-at-a-time job workflow.
+Implemented in Go. Six runtime modes — split, merge, translate, glossary, check and outline — plus an MCP (Model Context Protocol) server that exposes the same work as a chunk-at-a-time job workflow.
 
 ![The pipeline: a source document is cut into size-bounded chunks without breaking code fences, tables or HTML; the splitter returns only a manifest, never the text; each part travels to a local LLM as a stateless request with no chat history, and comes back through put_chunk.](docs/pipeline.svg)
 
