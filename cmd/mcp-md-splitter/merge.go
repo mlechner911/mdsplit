@@ -5,8 +5,8 @@ import (
 	"os"
 	"path/filepath"
 
-	"mcp-md-splitter/internal/job"
-	"mcp-md-splitter/internal/split"
+	"github.com/mlechner911/mdsplit/internal/job"
+	"github.com/mlechner911/mdsplit/internal/split"
 )
 
 // runMergeMode setzt die Teile eines Splits wieder zusammen. Der Ordner muss

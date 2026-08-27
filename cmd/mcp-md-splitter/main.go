@@ -3,7 +3,7 @@ package main
 import (
 	"flag"
 
-	"mcp-md-splitter/internal/llm"
+	"github.com/mlechner911/mdsplit/internal/llm"
 )
 
 // version ist die Server-Version für MCP-Clients; wird bei Bedarf via ldflags gesetzt.

@@ -1,4 +1,4 @@
-module mcp-md-splitter
+module github.com/mlechner911/mdsplit
 
 go 1.25.7
 

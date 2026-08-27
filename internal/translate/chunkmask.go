@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"strings"
 
-	"mcp-md-splitter/internal/split"
+	"github.com/mlechner911/mdsplit/internal/split"
 )
 
 // maskChunk prepares a whole chunk for chunk mode: code fences and HTML blocks

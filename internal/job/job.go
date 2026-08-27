@@ -15,7 +15,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"mcp-md-splitter/internal/split"
+	"github.com/mlechner911/mdsplit/internal/split"
 )
 
 // IndexName ist der Dateiname des Manifests im Chunk-Ordner.

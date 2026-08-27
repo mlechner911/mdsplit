@@ -6,8 +6,8 @@ import (
 	"regexp"
 	"strings"
 
-	"mcp-md-splitter/internal/llm"
-	"mcp-md-splitter/internal/split"
+	"github.com/mlechner911/mdsplit/internal/llm"
+	"github.com/mlechner911/mdsplit/internal/split"
 )
 
 // piece is one span of a chunk. A literal piece is reproduced byte for byte and

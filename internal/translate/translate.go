@@ -12,9 +12,9 @@ import (
 	"fmt"
 	"strings"
 
-	"mcp-md-splitter/internal/job"
-	"mcp-md-splitter/internal/llm"
-	"mcp-md-splitter/internal/split"
+	"github.com/mlechner911/mdsplit/internal/job"
+	"github.com/mlechner911/mdsplit/internal/llm"
+	"github.com/mlechner911/mdsplit/internal/split"
 )
 
 // languages maps the common short codes to a name a model understands. An

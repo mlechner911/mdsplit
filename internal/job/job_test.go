@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"mcp-md-splitter/internal/split"
+	"github.com/mlechner911/mdsplit/internal/split"
 )
 
 const doc = "# Titel\n\nProsa eins.\n\n## Kapitel\n\n```go\nfunc f() {}\n```\n\n- eins\n- zwei\n\nFazit.\n"

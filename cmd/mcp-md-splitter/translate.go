@@ -7,10 +7,10 @@ import (
 	"os"
 	"path/filepath"
 
-	"mcp-md-splitter/internal/job"
-	"mcp-md-splitter/internal/llm"
-	"mcp-md-splitter/internal/split"
-	"mcp-md-splitter/internal/translate"
+	"github.com/mlechner911/mdsplit/internal/job"
+	"github.com/mlechner911/mdsplit/internal/llm"
+	"github.com/mlechner911/mdsplit/internal/split"
+	"github.com/mlechner911/mdsplit/internal/translate"
 )
 
 // runTranslateMode walks every part that has not been written back yet and
