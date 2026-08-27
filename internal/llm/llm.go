@@ -59,6 +59,22 @@ const TranslateGemmaTemplate = "<start_of_turn>user\n" +
 	"explanations or commentary. Please translate the following {{.SourceLangName}} text into " +
 	"{{.TargetLangName}}:\n\n\n{{.User}}<end_of_turn>\n<start_of_turn>model\n"
 
+// Gemma3TranslatorTemplate is the request format zongwei/gemma3-translator
+// prescribes. Its own system prompt is in the Modelfile and stays in force.
+const Gemma3TranslatorTemplate = "Translate from {{.SourceLangName}} to {{.TargetLangName}}: {{.User}}"
+
+// ResolveUserTemplate expands a shorthand for a known model family.
+func ResolveUserTemplate(name string) string {
+	switch strings.TrimSpace(name) {
+	case "":
+		return ""
+	case "gemma3-translator":
+		return Gemma3TranslatorTemplate
+	default:
+		return name
+	}
+}
+
 // DefaultStop ends generation at the end of the model turn.
 var DefaultStop = []string{"<end_of_turn>"}
 
@@ -71,6 +87,16 @@ type Config struct {
 	Transport Transport
 	// PromptTemplate is a Go text/template used by the completions transport.
 	PromptTemplate string
+	// UserTemplate shapes the user message on the chat transport. Translation
+	// models often prescribe a request format - gemma3-translator wants
+	// "Translate from English to German: <text>" and has no other way to learn
+	// the target language, because the plain text carries none.
+	//
+	// When it is set, no separate system message is sent: a caller shaping the
+	// message itself decides whether the rules belong in it. That is what makes
+	// a model with its own baked-in system prompt usable, since a system
+	// message from us would replace it.
+	UserTemplate string
 	// Stop ends generation. Empty means DefaultStop for completions.
 	Stop []string
 }
@@ -98,6 +124,7 @@ func ConfigFromEnv() Config {
 		Timeout:        5 * time.Minute,
 		Transport:      Transport(os.Getenv("MDSPLIT_LLM_TRANSPORT")),
 		PromptTemplate: os.Getenv("MDSPLIT_LLM_TEMPLATE"),
+		UserTemplate:   os.Getenv("MDSPLIT_LLM_USER_TEMPLATE"),
 	}
 	if v := os.Getenv("MDSPLIT_LLM_STOP"); v != "" {
 		c.Stop = strings.Split(v, ",")
@@ -280,21 +307,16 @@ func (c *Client) Ask(ctx context.Context, data PromptData) (string, error) {
 // buildRequest renders the payload for the configured transport.
 func (c *Client) buildRequest(data PromptData) (string, []byte, error) {
 	if c.cfg.transport() == TransportCompletions {
-		tmplText := ResolveTemplate(c.cfg.PromptTemplate)
-		tmpl, err := template.New("prompt").Parse(tmplText)
+		prompt, err := render(ResolveTemplate(c.cfg.PromptTemplate), data)
 		if err != nil {
-			return "", nil, fmt.Errorf("parse prompt template: %w", err)
-		}
-		var sb strings.Builder
-		if err := tmpl.Execute(&sb, data); err != nil {
-			return "", nil, fmt.Errorf("render prompt template: %w", err)
+			return "", nil, err
 		}
 		stop := c.cfg.Stop
 		if len(stop) == 0 {
 			stop = DefaultStop
 		}
 		body, err := json.Marshal(completionRequest{
-			Model: c.cfg.Model, Prompt: sb.String(),
+			Model: c.cfg.Model, Prompt: prompt,
 			Temperature: 0, Stream: false, Stop: stop,
 		})
 		if err != nil {
@@ -303,12 +325,20 @@ func (c *Client) buildRequest(data PromptData) (string, []byte, error) {
 		return "/completions", body, nil
 	}
 
+	msgs := []chatMessage{
+		{Role: "system", Content: data.System},
+		{Role: "user", Content: data.User},
+	}
+	if ut := ResolveUserTemplate(c.cfg.UserTemplate); ut != "" {
+		rendered, err := render(ut, data)
+		if err != nil {
+			return "", nil, err
+		}
+		msgs = []chatMessage{{Role: "user", Content: rendered}}
+	}
 	body, err := json.Marshal(chatRequest{
-		Model: c.cfg.Model,
-		Messages: []chatMessage{
-			{Role: "system", Content: data.System},
-			{Role: "user", Content: data.User},
-		},
+		Model:       c.cfg.Model,
+		Messages:    msgs,
 		Temperature: 0,
 		Stream:      false,
 	})
@@ -316,6 +346,19 @@ func (c *Client) buildRequest(data PromptData) (string, []byte, error) {
 		return "", nil, fmt.Errorf("encode request: %w", err)
 	}
 	return "/chat/completions", body, nil
+}
+
+// render executes a prompt template against the request data.
+func render(text string, data PromptData) (string, error) {
+	tmpl, err := template.New("prompt").Parse(text)
+	if err != nil {
+		return "", fmt.Errorf("parse prompt template: %w", err)
+	}
+	var b strings.Builder
+	if err := tmpl.Execute(&b, data); err != nil {
+		return "", fmt.Errorf("render prompt template: %w", err)
+	}
+	return b.String(), nil
 }
 
 // snippet trims a body for an error message.

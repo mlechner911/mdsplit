@@ -249,3 +249,50 @@ func TestTranslateGemmaTemplate_RendersLanguagePair(t *testing.T) {
 		}
 	}
 }
+
+// TestUserTemplate_ReplacesTheWholeConversation: setzt der Aufrufer die
+// User-Nachricht selbst, geht keine System-Nachricht mehr raus. Nur so bleibt
+// der im Modelfile hinterlegte System-Prompt eines Übersetzungsmodells in
+// Kraft - eine eigene System-Nachricht würde ihn ersetzen.
+func TestUserTemplate_ReplacesTheWholeConversation(t *testing.T) {
+	var got capture
+	srv := fakeEndpoint(t, 200, okChat, &got)
+	defer srv.Close()
+
+	c := New(Config{BaseURL: srv.URL, Model: "gemma3-translator",
+		UserTemplate: "gemma3-translator"})
+	if _, err := c.Ask(context.Background(), PromptData{
+		System: "rules that must not be sent", User: "never transmitted",
+		SourceLangName: "English", TargetLangName: "German",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	msgs, _ := got.body["messages"].([]any)
+	if len(msgs) != 1 {
+		t.Fatalf("erwartet genau eine Nachricht, bekommen %d: %v", len(msgs), msgs)
+	}
+	m, _ := msgs[0].(map[string]any)
+	if m["role"] != "user" {
+		t.Errorf("Rolle = %v, erwartet user", m["role"])
+	}
+	want := "Translate from English to German: never transmitted"
+	if m["content"] != want {
+		t.Errorf("content = %q, erwartet %q", m["content"], want)
+	}
+	raw, _ := json.Marshal(got.body)
+	if strings.Contains(string(raw), "rules that must not be sent") {
+		t.Error("System-Prompt ging trotz User-Vorlage mit raus")
+	}
+}
+
+func TestResolveUserTemplate(t *testing.T) {
+	if ResolveUserTemplate("") != "" {
+		t.Error("leerer Name muss leer bleiben - sonst greift die Vorlage ungefragt")
+	}
+	if ResolveUserTemplate("gemma3-translator") != Gemma3TranslatorTemplate {
+		t.Error("Kurzform nicht aufgelöst")
+	}
+	if got := ResolveUserTemplate("X {{.User}}"); got != "X {{.User}}" {
+		t.Errorf("eigene Vorlage verändert: %q", got)
+	}
+}

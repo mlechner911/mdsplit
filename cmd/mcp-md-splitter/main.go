@@ -41,6 +41,7 @@ func main() {
 	llmModel := flag.String("llm-model", env.Model, "model name (env MDSPLIT_LLM_MODEL)")
 	llmTimeout := flag.Duration("llm-timeout", env.Timeout, "per-request timeout (env MDSPLIT_LLM_TIMEOUT)")
 	llmTransport := flag.String("llm-transport", string(env.Transport), "chat (default) or completions; completions renders the prompt here instead of relying on the server's chat template (env MDSPLIT_LLM_TRANSPORT)")
+	llmUserTemplate := flag.String("llm-user-template", env.UserTemplate, "Go template shaping the user message on the chat transport, or the shorthand \"gemma3-translator\"; when set, no system message is sent (env MDSPLIT_LLM_USER_TEMPLATE)")
 	llmTemplate := flag.String("llm-template", env.PromptTemplate, "Go template for the completions transport, or the shorthand \"translategemma\"; fields .System .User .SourceLang .TargetLang .SourceLangName .TargetLangName (env MDSPLIT_LLM_TEMPLATE)")
 	flag.Parse()
 
@@ -51,6 +52,7 @@ func main() {
 		Timeout:        *llmTimeout,
 		Transport:      llm.Transport(*llmTransport),
 		PromptTemplate: *llmTemplate,
+		UserTemplate:   *llmUserTemplate,
 		Stop:           env.Stop,
 	}
 

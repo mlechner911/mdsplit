@@ -329,6 +329,23 @@ Translation itself has no such limitation: `-source-lang` reaches the prompt
 template, and the block-mode structure guarantees hold whatever the languages
 are. It is only the *terminology extraction* that is English-shaped.
 
+### Models that prescribe a request format
+
+A translation model often wants the request shaped a particular way.
+`zongwei/gemma3-translator` expects `Translate from English to German: <text>`
+and has no other way to learn the target language — plain text carries none.
+
+```bash
+mcp-md-splitter -translate -dir chunks/ -lang de \
+  -llm-model zongwei/gemma3-translator:1b -llm-user-template gemma3-translator
+```
+
+`-llm-user-template` takes a Go template with the same fields, or that
+shorthand. When it is set, **no system message is sent**: a caller shaping the
+message itself decides whether the rules belong in it. That is what makes a
+model with its own baked-in system prompt usable at all — a system message from
+us would replace it.
+
 ### Models whose chat template will not take our request
 
 Some models ship a chat template an OpenAI-compatible layer cannot satisfy.
