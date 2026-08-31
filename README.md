@@ -4,6 +4,9 @@
 
 # Markdown Splitter
 
+> **[mlcgo.eu](https://mlcgo.eu)** — tools, libraries and manuals
+
+
 [![CI](https://github.com/mlechner911/mdsplit/actions/workflows/ci.yml/badge.svg)](https://github.com/mlechner911/mdsplit/actions/workflows/ci.yml)
 [![Go](https://img.shields.io/badge/go-1.25%2B-00ADD8?logo=go&logoColor=white)](go.mod)
 [![Release](https://img.shields.io/github/v/tag/mlechner911/mdsplit?label=release&color=blue)](https://github.com/mlechner911/mdsplit/releases)
