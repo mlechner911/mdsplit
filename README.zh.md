@@ -485,3 +485,11 @@ returns `Doc{Chunks, Gaps}`; `JoinGaps(chunks, gaps)` is the exact inverse.
 ## 许可证
 
 MIT © 2026 Michael Lechner — 参见 [LICENSE](LICENSE)。
+
+---
+
+## Reference
+
+The **[MCP Handbook](https://mlcgo.eu/books/mcp-handbuch/)** explains the Model Context Protocol from the ground
+up — tools, resources, prompts, transports, security and the artifact pattern.
+Available in English and German.

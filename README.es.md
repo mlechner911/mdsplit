@@ -482,3 +482,11 @@ byte-identical.
 ## Licencia
 
 MIT © 2026 Michael Lechner — ver [LICENSE](LICENSE).
+
+---
+
+## Referencia
+
+El **[Manual de MCP](https://mlcgo.eu/books/mcp-handbuch/)** explica el Model Context Protocol desde cero —
+herramientas, recursos, prompts, transportes, seguridad y el patrón de
+artefactos. Disponible en alemán e inglés.

@@ -479,6 +479,14 @@ Pipeline: `ExtractBlocks(content) []Block` parst Markdown in atomare Blöcke —
 `os.UserCacheDir()`), sowie eine Rundreiseprüfung, die jede
 Markdown-Datei im Repository bei drei Budgets spaltet und mergt, wobei der Vorgang fehlschlägt, wenn nicht jede Datei byte-identisch zurückkommt.
 
+## Referenz
+
+Das **[MCP-Handbuch](https://mlcgo.eu/books/mcp-handbuch/)** erklärt das Model Context Protocol von Grund auf —
+Tools, Resources, Prompts, Transporte, Sicherheit und das Artifact-Pattern.
+Auf Deutsch und Englisch.
+
+---
+
 ## Lizenz
 
 MIT © 2026 Michael Lechner — siehe [LICENSE](LICENSE).

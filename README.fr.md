@@ -478,6 +478,14 @@ Pipeline: `ExtractBlocks(content) []Block` analyse le Markdown en blocs atomique
 fichier Markdown du dépôt à trois budjets, échouant sauf si chacun revient
 byte-identique.
 
+## Référence
+
+Le **[Manuel MCP](https://mlcgo.eu/books/mcp-handbuch/)** explique le Model Context Protocol depuis les bases —
+outils, ressources, prompts, transports, sécurité et le motif d'artefact.
+Disponible en allemand et en anglais.
+
+---
+
 ## Licence
 
 MIT © 2026 Michael Lechner — voir [LICENSE](LICENSE).
